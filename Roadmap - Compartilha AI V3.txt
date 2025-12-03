@@ -1,0 +1,571 @@
+# 🗺️ Roadmap - Compartilha AI V3
+
+## 📊 Stack Atual
+- **Backend**: Render (Free)
+- **Frontend**: Vercel (Free)
+- **AI**: Google Gemini (Free)
+- **Banco**: A implementar - Supabase (Free)
+
+---
+
+## 🔒 FASE 0: Segurança da API (CRÍTICO - FAZER PRIMEIRO!)
+
+### Por que isso é prioridade máxima?
+Sua API está **totalmente aberta** agora. Qualquer pessoa que descubra sua URL pode:
+- ❌ Fazer requisições ilimitadas e esgotar seu free tier
+- ❌ Gastar toda sua quota do Gemini
+- ❌ Sobrecarregar seu servidor no Render
+- ❌ Enviar dados maliciosos
+- ❌ Usar sua API em projetos de terceiros
+
+### Solução: Implementar Autenticação por Token
+
+#### Opção A: Token Simples (RECOMENDADO para começar)
+**Melhor para**: Proteger rapidamente, sem complicações
+
+```python
+# backend/main.py
+from fastapi import Header, HTTPException
+import secrets
+
+# Gere um token único (faça isso UMA VEZ e guarde)
+# No terminal Python: secrets.token_urlsafe(32)
+API_SECRET_TOKEN = "seu_token_super_secreto_aqui_123abc"
+
+async def verify_token(x_api_key: str = Header(...)):
+    if x_api_key != API_SECRET_TOKEN:
+        raise HTTPException(status_code=403, detail="Token inválido")
+    return x_api_key
+
+# Use em TODOS os endpoints:
+@app.post("/api/scan", dependencies=[Depends(verify_token)])
+async def scan_receipt(file: UploadFile):
+    # seu código aqui
+```
+
+**No Frontend (api.js):**
+```javascript
+// frontend/src/services/api.js
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  headers: {
+    'X-API-Key': import.meta.env.VITE_API_SECRET_TOKEN
+  }
+});
+
+export default api;
+```
+
+**Arquivo .env no Frontend:**
+```env
+VITE_API_URL=https://sua-api.render.com
+VITE_API_SECRET_TOKEN=seu_token_super_secreto_aqui_123abc
+```
+
+**Arquivo .env no Backend:**
+```env
+API_SECRET_TOKEN=seu_token_super_secreto_aqui_123abc
+GEMINI_API_KEY=sua_chave_gemini
+```
+
+#### Opção B: JWT (JSON Web Tokens)
+**Melhor para**: Quando adicionar login de usuários depois
+
+Por enquanto, **não precisa**. JWT é mais complexo e faz mais sentido quando você tiver sistema de usuários.
+
+---
+
+### ✅ Checklist - Segurança Imediata (FASE 0):
+
+**Backend:**
+- [ ] Gerar token secreto único com `secrets.token_urlsafe(32)`
+- [ ] Criar função `verify_token` no main.py
+- [ ] Adicionar `dependencies=[Depends(verify_token)]` em TODOS os endpoints
+- [ ] Criar arquivo `.env` no backend com o token
+- [ ] Adicionar `.env` no `.gitignore` (NUNCA commitar tokens!)
+- [ ] Configurar variável de ambiente no Render com o token
+- [ ] Testar endpoints com e sem token (deve bloquear sem token)
+
+**Frontend:**
+- [ ] Criar arquivo `.env` na raiz do frontend
+- [ ] Adicionar token no .env
+- [ ] Adicionar `.env` no `.gitignore`
+- [ ] Modificar `api.js` para incluir o header `X-API-Key`
+- [ ] Configurar variável de ambiente no Vercel com o token
+- [ ] Testar se requisições funcionam corretamente
+
+**Proteções Adicionais:**
+- [ ] Instalar `pip install python-multipart slowapi`
+- [ ] Adicionar rate limiting (máximo de requisições por IP):
+
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.post("/api/scan")
+@limiter.limit("5/minute")  # Máximo 5 uploads por minuto por IP
+async def scan_receipt(request: Request, file: UploadFile):
+    # seu código
+```
+
+- [ ] Adicionar validação de tamanho de arquivo:
+```python
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+@app.post("/api/scan")
+async def scan_receipt(file: UploadFile):
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(400, "Arquivo muito grande (máx 10MB)")
+    # processar arquivo...
+```
+
+- [ ] Adicionar validação de tipo de arquivo:
+```python
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+
+@app.post("/api/scan")
+async def scan_receipt(file: UploadFile):
+    ext = file.filename.split('.')[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, "Tipo de arquivo não permitido")
+```
+
+- [ ] Configurar CORS corretamente (apenas seu domínio):
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://seu-app.vercel.app",  # Produção
+        "http://localhost:5173"  # Desenvolvimento
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+- [ ] Instalar e configurar helmet:
+```python
+pip install fastapi-security
+
+from fastapi_security import SecurityHeaders
+
+app.add_middleware(SecurityHeaders)
+```
+
+---
+
+### 🚨 AVISOS IMPORTANTES:
+
+1. **NUNCA commite tokens no Git!**
+   - Sempre use `.env` files
+   - Sempre adicione `.env` no `.gitignore`
+   - Configure tokens como variáveis de ambiente no Render/Vercel
+
+2. **Rotacione tokens se expor acidentalmente**
+   - Se você commitou um token por engano, MUDE ele imediatamente
+   - Gere um novo token e atualize em todos os lugares
+
+3. **Free tier do Render hiberna após 15min**
+   - Primeira requisição após hibernar demora ~1min para acordar
+   - Considere um cron job para manter acordado (ou aceite o delay)
+
+---
+
+## 🎯 FASE 1: Fundação & Banco de Dados (Prioridade ALTA)
+
+### 1.1 Estrutura de Banco de Dados (Supabase)
+**Objetivo**: Persistir dados e permitir histórico de divisões
+
+#### Tabelas Necessárias:
+
+**`users`** (se implementar login)
+```sql
+- id (uuid, primary key)
+- email (text, unique)
+- password_hash (text)
+- name (text)
+- created_at (timestamp)
+- last_login (timestamp)
+```
+
+**`divisoes`** (sessões de divisão)
+```sql
+- id (uuid, primary key)
+- user_id (uuid, foreign key) - nullable se não tiver login
+- session_id (text, unique) - para divisões anônimas
+- subtotal (decimal)
+- desconto (decimal)
+- taxa_percentual (decimal)
+- total (decimal)
+- status (enum: 'em_progresso', 'finalizada')
+- created_at (timestamp)
+- updated_at (timestamp)
+```
+
+**`itens`**
+```sql
+- id (uuid, primary key)
+- divisao_id (uuid, foreign key)
+- nome (text)
+- quantidade (integer)
+- valor_unitario (decimal)
+- valor_total (decimal)
+- distribuido (boolean)
+- ordem (integer)
+- created_at (timestamp)
+```
+
+**`pessoas`**
+```sql
+- id (uuid, primary key)
+- divisao_id (uuid, foreign key)
+- nome (text)
+- avatar_cor (text) - hex color
+- created_at (timestamp)
+```
+
+**`item_pessoa`** (tabela de relacionamento muitos-para-muitos)
+```sql
+- id (uuid, primary key)
+- item_id (uuid, foreign key)
+- pessoa_id (uuid, foreign key)
+- quantidade (decimal) - para divisões fracionadas (1/3, etc)
+- valor_atribuido (decimal)
+- created_at (timestamp)
+```
+
+**`historico_divisoes`** (para guardar finalizadas)
+```sql
+- id (uuid, primary key)
+- divisao_id (uuid, foreign key)
+- snapshot_json (jsonb) - snapshot completo da divisão
+- compartilhado (boolean)
+- created_at (timestamp)
+```
+
+#### ✅ Checklist - Banco de Dados:
+- [ ] Criar conta no Supabase
+- [ ] Configurar projeto no Supabase
+- [ ] Criar todas as tabelas com migrations
+- [ ] Configurar Row Level Security (RLS) policies
+- [ ] Testar CRUD básico de cada tabela
+- [ ] Documentar estrutura do banco
+
+---
+
+### 1.2 Autenticação & Segurança
+**Objetivo**: Proteger API e dados dos usuários
+
+#### Opções de Autenticação:
+
+**Opção A: Login Completo (Recomendado)**
+- Usar Supabase Auth (já vem pronto!)
+- Email + senha
+- Magic link (email sem senha)
+- OAuth (Google, GitHub opcional)
+
+**Opção B: Sessão Anônima (Mais Simples)**
+- Gerar session_id único por dispositivo
+- Guardar no localStorage
+- Não precisa de login/senha
+- Dados ficam vinculados ao dispositivo
+
+**Minha Recomendação**: Começar com **Opção B** (sessão anônima) e depois adicionar **Opção A** como feature premium/opcional.
+
+#### ✅ Checklist - Segurança Backend:
+- [ ] Implementar rate limiting (express-rate-limit)
+- [ ] Adicionar validação de dados (zod ou joi)
+- [ ] Configurar CORS corretamente
+- [ ] Adicionar helmet para headers de segurança
+- [ ] Criar middleware de autenticação
+- [ ] Implementar tokens JWT ou usar Supabase Auth
+- [ ] Variáveis de ambiente para chaves sensíveis
+- [ ] Logs de auditoria (quem fez o quê)
+
+#### ✅ Checklist - Segurança Frontend:
+- [ ] Sanitização de inputs do usuário
+- [ ] Validação client-side antes de enviar
+- [ ] Não expor chaves de API no código
+- [ ] Implementar session management
+- [ ] HTTPS obrigatório (Vercel já faz)
+
+---
+
+## 🎨 FASE 2: UX & Novas Features (Prioridade MÉDIA)
+
+### 2.1 Página de Landing/Introdução
+**Objetivo**: Explicar o app e converter visitantes
+
+#### Conteúdo da Landing:
+- Hero section com título impactante
+- Demo visual (GIF ou vídeo curto)
+- Benefícios principais (3-4 cards)
+- Como funciona (3-4 passos)
+- Botão CTA: "Começar Agora" (sem cadastro)
+- Botão secundário: "Ver Demo"
+- Footer com links úteis
+
+#### PWA - Instalar no Celular:
+- Criar `manifest.json`
+- Adicionar service worker
+- Ícones em múltiplos tamanhos
+- Splash screen personalizada
+- Prompt de instalação customizado
+
+#### ✅ Checklist - Landing Page:
+- [ ] Design da landing no Figma/Sketch
+- [ ] Desenvolver landing page
+- [ ] Adicionar animações (framer-motion)
+- [ ] Criar manifest.json para PWA
+- [ ] Implementar service worker
+- [ ] Gerar ícones PWA (512x512, 192x192, etc)
+- [ ] Testar instalação em Android
+- [ ] Testar instalação em iOS
+- [ ] Analytics (Google Analytics ou Plausible)
+- [ ] SEO básico (meta tags, Open Graph)
+
+---
+
+### 2.2 Gamificação - Roleta Russa 🎲
+**Objetivo**: Tornar divisão de contas mais divertida
+
+#### Modos de Jogo:
+
+**1. Roleta Aleatória Completa**
+- Distribui TODOS os itens aleatoriamente
+- Animação de roleta girando
+- Revelar resultado dramaticamente
+
+**2. Salvar Alguém**
+- Escolhe 1 pessoa para não pagar nada
+- Divide o valor dela entre os outros
+- Animação de "sorte grande"
+
+**3. Quem Paga Tudo?**
+- Roleta escolhe 1 azarado
+- Essa pessoa paga a conta inteira
+- Modal de "F no chat" 😅
+
+**4. Desafio 50/50**
+- Sorteia 2 grupos
+- Um grupo paga 75%, outro 25%
+
+**5. Modo Surpresa**
+- Cada pessoa roda individualmente
+- Pode ganhar desconto (0-50%)
+- Ou pagar mais (até +30%)
+
+#### ✅ Checklist - Gamificação:
+- [ ] Desenhar fluxo de cada modo
+- [ ] Criar componente de Roleta animada
+- [ ] Implementar lógica de distribuição aleatória
+- [ ] Adicionar sons/efeitos (opcional)
+- [ ] Criar modal de resultado dramático
+- [ ] Permitir "refazer" sorteio
+- [ ] Salvar histórico de sorteios
+- [ ] Compartilhar resultado nas redes
+
+---
+
+### 2.3 Melhorias de UX
+
+#### ✅ Checklist - UX:
+- [ ] Adicionar tutorial interativo (first-time user)
+- [ ] Implementar undo/redo
+- [ ] Dark mode / Light mode toggle
+- [ ] Animações de transição suaves
+- [ ] Loading states em todas ações
+- [ ] Mensagens de erro amigáveis
+- [ ] Toasts para feedback de ações
+- [ ] Skeleton loaders
+- [ ] Drag and drop para reordenar itens
+- [ ] Atalhos de teclado (opcional)
+
+---
+
+## 💾 FASE 3: Persistência & Histórico (Prioridade MÉDIA)
+
+### 3.1 Salvamento Automático
+- [ ] Auto-save a cada mudança (debounced)
+- [ ] Indicador visual de "salvando..."
+- [ ] Sincronização em tempo real (opcional)
+
+### 3.2 Histórico de Divisões
+- [ ] Página de histórico
+- [ ] Lista de divisões anteriores
+- [ ] Buscar por data, pessoas, valor
+- [ ] Visualizar detalhes de divisão antiga
+- [ ] Duplicar divisão anterior
+- [ ] Excluir divisões antigas
+- [ ] Exportar para PDF
+
+### 3.3 Templates/Favoritos
+- [ ] Salvar combinações de pessoas frequentes
+- [ ] Templates de grupos (ex: "Galera do Trabalho")
+- [ ] Itens favoritos recorrentes
+
+---
+
+## 🚀 FASE 4: Recursos Avançados (Prioridade BAIXA)
+
+### 4.1 Compartilhamento & Colaboração
+- [ ] Gerar link compartilhável
+- [ ] QR Code da divisão
+- [ ] Modo colaborativo (múltiplas pessoas editando)
+- [ ] WhatsApp share com resumo formatado
+- [ ] Copiar resumo para clipboard
+
+### 4.2 Integrações
+- [ ] Integração com Pix (copiar/colar chaves)
+- [ ] Gerar QR Code Pix por pessoa
+- [ ] Export para Splitwise
+- [ ] Importar de foto de NFe (se tiver API)
+
+### 4.3 Estatísticas
+- [ ] Dashboard de gastos mensais
+- [ ] Com quem você divide mais
+- [ ] Média de gasto por pessoa
+- [ ] Gráficos de distribuição
+- [ ] Categorização de gastos
+
+---
+
+## 🎯 FASE 5: Otimização & Escala (Prioridade BAIXA)
+
+### 5.1 Performance
+- [ ] Code splitting
+- [ ] Lazy loading de componentes
+- [ ] Otimizar bundle size
+- [ ] Cache de imagens
+- [ ] Compressão de assets
+- [ ] Lighthouse score > 90
+
+### 5.2 Monitoramento
+- [ ] Sentry para error tracking
+- [ ] Analytics de uso
+- [ ] Logs estruturados
+- [ ] Alertas de downtime
+- [ ] Dashboard de métricas
+
+### 5.3 Testes
+- [ ] Testes unitários (principais funções)
+- [ ] Testes de integração (API)
+- [ ] Testes E2E (Playwright/Cypress)
+- [ ] CI/CD pipeline
+
+---
+
+## 📱 FASE 6: Mobile First (Prioridade BAIXA)
+
+### 6.1 App Nativo (Opcional)
+**Opção A**: React Native / Expo
+**Opção B**: Capacitor (reutiliza código web)
+
+- [ ] Avaliar necessidade de app nativo
+- [ ] Converter para React Native (se necessário)
+- [ ] Push notifications
+- [ ] Publicar na Google Play
+- [ ] Publicar na App Store (requer conta developer $99/ano)
+
+---
+
+## 🎨 Próximos Passos Recomendados (Ordem Sugerida)
+
+### Sprint 1 (2-3 semanas):
+1. ✅ Configurar Supabase
+2. ✅ Criar estrutura de tabelas
+3. ✅ Implementar sessão anônima (session_id)
+4. ✅ Migrar lógica para salvar no banco
+5. ✅ Testar CRUD completo
+
+### Sprint 2 (2 semanas):
+1. ✅ Implementar segurança básica (rate limit, validação)
+2. ✅ Criar sistema de histórico
+3. ✅ Melhorar tratamento de erros
+
+### Sprint 3 (2-3 semanas):
+1. ✅ Desenvolver landing page
+2. ✅ Implementar PWA (manifest + service worker)
+3. ✅ Testar instalação mobile
+
+### Sprint 4 (2 semanas):
+1. ✅ Implementar primeiro modo de gamificação (Roleta Aleatória)
+2. ✅ Adicionar animações de roleta
+3. ✅ Testar e refinar UX
+
+### Sprint 5+ (Melhorias contínuas):
+- Adicionar mais modos de gamificação
+- Melhorar analytics
+- Features avançadas conforme feedback
+
+---
+
+## 💡 Dicas Importantes
+
+### Mantenha o Free Tier:
+- **Render**: 750h/mês grátis, mas dorme após 15min inatividade
+- **Vercel**: 100GB bandwidth/mês grátis
+- **Supabase**: 500MB database, 2GB bandwidth/mês grátis
+- **Gemini**: 15 req/min grátis (API key individual)
+
+### Quando Considerar Pagar:
+- Mais de 1000 usuários ativos/mês
+- Backend muito lento (wake-up delays)
+- Precisa de mais storage no Supabase
+
+### Alternativas Gratuitas:
+- **Backend**: Railway, Fly.io (free tier)
+- **Banco**: PlanetScale, Neon (Postgres grátis)
+- **Analytics**: Plausible (auto-hospedado), Umami
+
+---
+
+## 📝 Notas Finais
+
+**Sobre Login/Senha:**
+- Comece SEM login obrigatório (melhor UX)
+- Use session_id para persistir dados
+- Adicione login OPCIONAL depois para:
+  - Sincronizar entre dispositivos
+  - Acessar histórico de qualquer lugar
+  - Backup na nuvem
+
+**Sobre Gamificação:**
+- É um diferencial MUITO forte! 🎲
+- Poucos apps de divisão têm isso
+- Foco em diversão + funcionalidade
+- Pode viralizar no TikTok/Instagram
+
+**Priorize:**
+1. Funcionalidade core funcionando 100%
+2. Salvar no banco (persistência)
+3. Landing page + PWA (aquisição)
+4. Gamificação (diferencial)
+5. Histórico e features avançadas
+
+---
+
+## 🎯 Meta de 3 Meses
+
+- ✅ App completo funcionando
+- ✅ PWA instalável
+- ✅ Banco de dados persistindo tudo
+- ✅ 3+ modos de gamificação
+- ✅ Landing page profissional
+- 🎯 100+ usuários ativos testando
+- 🎯 Feedback e iterações
+
+---
+
+**Bora fazer esse app bombar! 🚀**

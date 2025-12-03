@@ -1,0 +1,24 @@
+# Este arquivo lista todas as dependências Python necessárias para rodar o backend.
+# As versões estão "fixadas" para garantir que o projeto sempre funcione da mesma forma.
+# Para instalar todas de uma vez, use o comando: pip install -r requirements.txt
+
+# O framework principal que usamos para construir a API.
+fastapi==0.119.0
+
+# O servidor que executa nossa aplicação FastAPI.
+uvicorn==0.38.0
+
+# A biblioteca oficial do Google para interagir com a IA Gemini.
+google-generativeai==0.8.5
+
+# Usado para carregar variáveis de ambiente (como a API Key) do arquivo .env.
+python-dotenv==1.1.1
+
+# Biblioteca para manipulação de imagens. Usamos para abrir a imagem da comanda.
+Pillow==12.0.0
+
+# Usado extensivamente pelo FastAPI para validação de dados (nossos Schemas).
+pydantic==2.12.3
+
+# Necessário para o FastAPI lidar com uploads de arquivos (formulários multipart).
+python-multipart==0.0.20

@@ -1,0 +1,48 @@
+# Arquivo de configuração do Git para ignorar arquivos e pastas desnecessários.
+
+### Python / Backend ###
+# Ignora o ambiente virtual inteiro.
+/venv/
+# Ignora os arquivos de cache do Python.
+__pycache__/
+*.pyc
+# Ignora o arquivo de segredos do backend.
+/backend/.env
+
+### Node / Frontend ###
+# Ignora a pasta de dependências do Node.
+/frontend/node_modules/
+# Ignora a pasta de build de produção.
+/frontend/dist/
+# Ignora os arquivos de segredos e configurações de ambiente do frontend.
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production
+/frontend/.env.production.local
+# Ignora logs de erro do npm/yarn.
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+### Arquivos do Projeto ###
+# Ignora a pasta de uploads temporários.
+/temp_uploads/
+# Ignora arquivos de texto do projeto.
+ideia_inicial.txt
+checklist_backend.txt
+checklist_frontend.txt
+comandos.txt
+informativo.txt
+
+### Arquivos de Sistema Operacional e Editores ###
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+# VSCode
+.vscode/*
+!.vscode/extensions.json
+# JetBrains (PyCharm, WebStorm)
+.idea/
