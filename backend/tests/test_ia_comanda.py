@@ -1,10 +1,20 @@
 import os
-from services.ia_scanner import scan_receipt_to_json
+import sys
 import json
 
+# Adiciona o diretório 'backend' ao sys.path para encontrar a pasta 'services'
+# Obtém o caminho do diretório do script atual (backend/tests)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Obtém o caminho do diretório pai (backend)
+backend_dir = os.path.dirname(current_dir)
+# Adiciona o diretório 'backend' ao path do sistema
+sys.path.append(backend_dir)
+
+from services.ia_scanner import scan_receipt_to_json
+
 # --- CONFIGURAÇÃO DO TESTE ---
-# 1. Crie uma pasta chamada 'test_images' dentro da pasta 'backend'.
-#    (Caminho final: backend/test_images/)
+# 1. Crie uma pasta chamada 'test_images' dentro da pasta 'tests'.
+#    (Caminho final: backend/tests/test_images/)
 # 2. Coloque a foto de uma comanda real dentro desta pasta.
 # 3. Atualize o valor da variável 'NOME_DO_ARQUIVO_DA_IMAGEM' abaixo.
 
@@ -18,7 +28,7 @@ def testar_extracao_comanda():
     Executa um teste prático na função de extração da IA.
     """
     # Constrói o caminho completo para a imagem de teste
-    # O script é executado a partir da pasta 'backend', então o caminho é relativo a ela.
+    # O script está em 'tests', a pasta de imagens também, então o caminho relativo é direto.
     caminho_da_imagem = os.path.join("test_images", NOME_DO_ARQUIVO_DA_IMAGEM)
 
     print("-" * 50)
@@ -27,7 +37,7 @@ def testar_extracao_comanda():
 
     if not os.path.exists(caminho_da_imagem):
         print(f"🚨 ERRO: Imagem de teste não encontrada!")
-        print(f"   Verifique se o arquivo '{NOME_DO_ARQUIVO_DA_IMAGEM}' existe na pasta 'backend/test_images/'.")
+        print(f"   Verifique se o arquivo '{NOME_DO_ARQUIVO_DA_IMAGEM}' existe na pasta 'backend/tests/test_images/'.")
         return
 
     # Chama a função principal do nosso serviço de IA
