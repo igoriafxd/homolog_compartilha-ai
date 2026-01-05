@@ -5,11 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [
     react({
-      jsxRuntime: 'automatic',
-    }),
+      // Adiciona esta linha para usar o novo JSX transform
+      jsxRuntime: 'automatic'
+    })
   ],
-  server: {
-    host: true,      // permite acesso via rede
-    port: 5173,      // garante a porta padrão
-  },
 })
