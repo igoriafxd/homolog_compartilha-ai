@@ -25,3 +25,6 @@ python-multipart==0.0.20
 
 # Cliente do Supabase para Python - banco de dados e autenticação.
 supabase==2.10.0
+
+# Biblioteca para decodificar e validar tokens JWT do Supabase.
+pyjwt==2.9.0

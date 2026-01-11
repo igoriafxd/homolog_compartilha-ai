@@ -1,6 +1,6 @@
 # --- Anotações para Iniciantes ---
 # Este arquivo é o "coração" do nosso backend.
-# ATUALIZADO: Agora usando Supabase para persistência de dados!
+# ATUALIZADO: Agora usando Supabase para persistência e autenticação JWT!
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.security import APIKeyHeader
@@ -25,11 +25,12 @@ API_SECRET_TOKEN = os.getenv("API_SECRET_TOKEN")
 if API_SECRET_TOKEN:
     logger.info(f"✅ Token carregado: {API_SECRET_TOKEN[:8]}...")
 else:
-    logger.warning("⚠️ Rodando SEM autenticação (modo desenvolvimento)")
+    logger.warning("⚠️ Rodando SEM autenticação por API Key")
 
 # --- Importações do nosso próprio projeto ---
 from .services.ia_scanner import scan_receipt_to_json
 from .services import db_service as db
+from .services.auth import get_current_user  # NOVO: Autenticação JWT
 from .schemas import (
     Item, ScanResponse, Pessoa, Divisao, DistribuirItemRequest, TotaisResponse,
     PessoaTotal, ItemConsumido, Progresso, ItemPayload, ConfigDivisao, AddPessoaRequest
@@ -39,7 +40,7 @@ from .schemas import (
 app = FastAPI(
     title="Compartilha AI API",
     description="API para escanear e dividir contas de restaurante.",
-    version="3.0.0"  # Versão atualizada com Supabase
+    version="3.1.0"  # Versão atualizada com autenticação JWT
 )
 
 # Middleware de CORS
@@ -74,23 +75,9 @@ class CustomSecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CustomSecurityHeadersMiddleware)
 
-# --- Esquema e Função de Autenticação ---
-api_key_scheme = APIKeyHeader(name="x-api-key", auto_error=False)
-
-async def verify_api_key(x_api_key: Optional[str] = Depends(api_key_scheme)):
-    """Verifica se o token de API enviado no header é válido."""
-    if not API_SECRET_TOKEN:
-        return None
-    if not x_api_key or x_api_key != API_SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="🔒 Token de API inválido ou ausente")
-    return x_api_key
-
 # --- Constantes ---
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
-
-# ID de usuário temporário para desenvolvimento (até implementar auth completa)
-DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 # ============================================
@@ -122,8 +109,16 @@ def db_divisao_to_response(divisao_db: dict) -> Divisao:
     )
 
 
+def get_user_id_or_error(current_user: dict) -> str:
+    """Extrai o user_id do usuário autenticado ou lança erro."""
+    user_id = current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Usuário não autenticado. Faça login para continuar.")
+    return user_id
+
+
 # ============================================
-# ENDPOINTS PRINCIPAIS
+# ENDPOINTS PÚBLICOS
 # ============================================
 
 @app.get("/api")
@@ -132,7 +127,7 @@ def read_root():
     return {
         "status": "ok",
         "version": app.version,
-        "secured": bool(API_SECRET_TOKEN),
+        "auth": "jwt",
         "database": "supabase"
     }
 
@@ -148,8 +143,12 @@ def health_check():
     }
 
 
+# ============================================
+# ENDPOINTS AUTENTICADOS
+# ============================================
+
 @app.post("/api/scan-comanda", response_model=ScanResponse)
-async def scan_comanda_endpoint(file: UploadFile = File(...), token: str = Depends(verify_api_key)):
+async def scan_comanda_endpoint(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     """Recebe uma imagem de comanda, processa com a IA e retorna a lista de itens."""
     
     contents = await file.read()
@@ -206,11 +205,14 @@ class CriarDivisaoRequest(BaseModel):
 
 
 @app.post("/api/criar-divisao", response_model=Divisao)
-async def criar_divisao_endpoint(request: CriarDivisaoRequest, token: str = Depends(verify_api_key)):
+async def criar_divisao_endpoint(request: CriarDivisaoRequest, current_user: dict = Depends(get_current_user)):
     """Cria uma nova sessão de divisão com base nos itens e nos nomes das pessoas."""
     try:
+        # Pega o user_id do token JWT
+        user_id = get_user_id_or_error(current_user)
+        
         # Cria a divisão no banco
-        divisao_db = db.create_divisao(user_id=DEV_USER_ID)
+        divisao_db = db.create_divisao(user_id=user_id)
         if not divisao_db:
             raise HTTPException(status_code=500, detail="Erro ao criar divisão no banco")
         
@@ -236,7 +238,7 @@ async def criar_divisao_endpoint(request: CriarDivisaoRequest, token: str = Depe
         if not divisao_completa:
             raise HTTPException(status_code=500, detail="Erro ao buscar divisão criada")
         
-        logger.info(f"Nova divisão criada com ID: {divisao_id}")
+        logger.info(f"Nova divisão criada com ID: {divisao_id} para usuário: {user_id[:8]}...")
         return db_divisao_to_response(divisao_completa)
         
     except HTTPException:
@@ -247,7 +249,7 @@ async def criar_divisao_endpoint(request: CriarDivisaoRequest, token: str = Depe
 
 
 @app.get("/api/divisao/{divisao_id}", response_model=Divisao)
-async def buscar_divisao_endpoint(divisao_id: str, token: str = Depends(verify_api_key)):
+async def buscar_divisao_endpoint(divisao_id: str, current_user: dict = Depends(get_current_user)):
     """Busca uma divisão pelo ID."""
     divisao = db.get_divisao_completa(divisao_id)
     if not divisao:
@@ -256,9 +258,11 @@ async def buscar_divisao_endpoint(divisao_id: str, token: str = Depends(verify_a
 
 
 @app.get("/api/divisoes", response_model=List[Divisao])
-async def listar_divisoes_endpoint(token: str = Depends(verify_api_key)):
+async def listar_divisoes_endpoint(current_user: dict = Depends(get_current_user)):
     """Lista todas as divisões do usuário."""
-    divisoes = db.get_divisoes_by_user(DEV_USER_ID)
+    user_id = get_user_id_or_error(current_user)
+    
+    divisoes = db.get_divisoes_by_user(user_id)
     result = []
     for div in divisoes:
         divisao_completa = db.get_divisao_completa(div["id"])
@@ -272,7 +276,7 @@ async def listar_divisoes_endpoint(token: str = Depends(verify_api_key)):
 # ============================================
 
 @app.put("/api/divisao/{divisao_id}/config", response_model=Divisao)
-async def configurar_divisao_endpoint(divisao_id: str, config: ConfigDivisao, token: str = Depends(verify_api_key)):
+async def configurar_divisao_endpoint(divisao_id: str, config: ConfigDivisao, current_user: dict = Depends(get_current_user)):
     """Atualiza as configurações gerais da divisão."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -293,7 +297,7 @@ async def configurar_divisao_endpoint(divisao_id: str, config: ConfigDivisao, to
 # ============================================
 
 @app.post("/api/divisao/{divisao_id}/item", response_model=Divisao)
-async def adicionar_item_endpoint(divisao_id: str, item_payload: ItemPayload, token: str = Depends(verify_api_key)):
+async def adicionar_item_endpoint(divisao_id: str, item_payload: ItemPayload, current_user: dict = Depends(get_current_user)):
     """Adiciona um novo item à lista de itens da divisão."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -312,7 +316,7 @@ async def adicionar_item_endpoint(divisao_id: str, item_payload: ItemPayload, to
 
 
 @app.put("/api/divisao/{divisao_id}/item/{item_id}", response_model=Divisao)
-async def editar_item_endpoint(divisao_id: str, item_id: str, item_payload: ItemPayload, token: str = Depends(verify_api_key)):
+async def editar_item_endpoint(divisao_id: str, item_id: str, item_payload: ItemPayload, current_user: dict = Depends(get_current_user)):
     """Edita um item existente na divisão."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -334,7 +338,7 @@ async def editar_item_endpoint(divisao_id: str, item_id: str, item_payload: Item
 
 
 @app.delete("/api/divisao/{divisao_id}/item/{item_id}", response_model=Divisao)
-async def excluir_item_endpoint(divisao_id: str, item_id: str, token: str = Depends(verify_api_key)):
+async def excluir_item_endpoint(divisao_id: str, item_id: str, current_user: dict = Depends(get_current_user)):
     """Exclui um item da divisão."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -356,7 +360,7 @@ async def excluir_item_endpoint(divisao_id: str, item_id: str, token: str = Depe
 # ============================================
 
 @app.post("/api/divisao/{divisao_id}/pessoa", response_model=Divisao)
-async def adicionar_pessoa_endpoint(divisao_id: str, request: AddPessoaRequest, token: str = Depends(verify_api_key)):
+async def adicionar_pessoa_endpoint(divisao_id: str, request: AddPessoaRequest, current_user: dict = Depends(get_current_user)):
     """Adiciona uma nova pessoa à divisão."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -375,7 +379,7 @@ async def adicionar_pessoa_endpoint(divisao_id: str, request: AddPessoaRequest, 
 
 
 @app.delete("/api/divisao/{divisao_id}/pessoa/{pessoa_id}", response_model=Divisao)
-async def excluir_pessoa_endpoint(divisao_id: str, pessoa_id: str, token: str = Depends(verify_api_key)):
+async def excluir_pessoa_endpoint(divisao_id: str, pessoa_id: str, current_user: dict = Depends(get_current_user)):
     """Exclui uma pessoa e redistribui suas atribuições."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -386,8 +390,6 @@ async def excluir_pessoa_endpoint(divisao_id: str, pessoa_id: str, token: str = 
         raise HTTPException(status_code=404, detail="Pessoa não encontrada.")
     
     # A redistribuição automática das atribuições acontece via CASCADE no banco
-    # Mas se quisermos redistribuir para outros participantes, precisamos fazer manualmente
-    # Por enquanto, apenas deletamos (as atribuições são deletadas automaticamente)
     db.delete_pessoa(pessoa_id)
     
     logger.info(f"Pessoa ID '{pessoa_id}' excluída da divisão '{divisao_id}'.")
@@ -400,7 +402,7 @@ async def excluir_pessoa_endpoint(divisao_id: str, pessoa_id: str, token: str = 
 # ============================================
 
 @app.post("/api/distribuir-item/{divisao_id}", response_model=Divisao)
-async def distribuir_item_endpoint(divisao_id: str, request: DistribuirItemRequest, token: str = Depends(verify_api_key)):
+async def distribuir_item_endpoint(divisao_id: str, request: DistribuirItemRequest, current_user: dict = Depends(get_current_user)):
     """Atribui um item (ou partes dele) a uma ou mais pessoas."""
     divisao = db.get_divisao(divisao_id)
     if not divisao:
@@ -435,7 +437,7 @@ async def distribuir_item_endpoint(divisao_id: str, request: DistribuirItemReque
 # ============================================
 
 @app.get("/api/calcular-totais/{divisao_id}", response_model=TotaisResponse)
-async def calcular_totais_endpoint(divisao_id: str, token: str = Depends(verify_api_key)):
+async def calcular_totais_endpoint(divisao_id: str, current_user: dict = Depends(get_current_user)):
     """Calcula e retorna os totais para cada pessoa."""
     divisao_completa = db.get_divisao_completa(divisao_id)
     if not divisao_completa:
@@ -500,5 +502,5 @@ async def calcular_totais_endpoint(divisao_id: str, token: str = Depends(verify_
 
 # --- Execução do Servidor ---
 if __name__ == "__main__":
-    print("🔒 Compartilha AI API - Com Supabase")
+    print("🔒 Compartilha AI API - Com Supabase + JWT Auth")
     print("uvicorn backend.main:app --reload --host 0.0.0.0 --port 8001")

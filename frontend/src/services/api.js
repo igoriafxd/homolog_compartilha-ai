@@ -1,15 +1,48 @@
 // src/services/api.js
-import axios from 'axios';
+// Cliente HTTP que envia o token do Supabase automaticamente
 
-// Cria uma "instância" do axios. É como criar um cliente de API pré-configurado.
+import axios from 'axios';
+import { supabase } from './supabase';
+
+// Cria instância do axios pré-configurada
 const api = axios.create({
-  // A URL base para todas as chamadas. Vem da nossa variável de ambiente.
-  // O `||` serve como um fallback (plano B) caso a variável não esteja definida.
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8001',
-  headers: {
-    'X-API-Key': import.meta.env.VITE_API_SECRET_TOKEN
-  }
 });
 
-// Exportamos a instância para que outros componentes possam usá-la.
+// Interceptor: adiciona o token em TODAS as requisições
+api.interceptors.request.use(async (config) => {
+  // Pega a sessão atual do Supabase
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (session?.access_token) {
+    // Se tiver sessão, usa o token JWT do Supabase
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  
+  // Mantém o token antigo como fallback (desenvolvimento)
+  const apiToken = import.meta.env.VITE_API_SECRET_TOKEN;
+  if (apiToken) {
+    config.headers['X-API-Key'] = apiToken;
+  }
+  
+  return config;
+});
+
+// Interceptor: trata erros de autenticação
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      console.warn('Token expirado. Tentando renovar...');
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) {
+        await supabase.auth.signOut();
+        window.location.reload();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
