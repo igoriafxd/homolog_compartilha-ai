@@ -91,6 +91,7 @@ def db_divisao_to_response(divisao_db: dict) -> Divisao:
     
     return Divisao(
         id=divisao_db["id"],
+        nome=divisao_db.get("nome", "Divisão sem nome"),  # Campo nome adicionado
         itens=[
             Item(
                 id=item["id"],
@@ -202,6 +203,7 @@ async def scan_comanda_endpoint(file: UploadFile = File(...), current_user: dict
 class CriarDivisaoRequest(BaseModel):
     itens: List[Item]
     nomes_pessoas: List[str]
+    nome: Optional[str] = None  # Nome da divisão (opcional)
 
 
 @app.post("/api/criar-divisao", response_model=Divisao)
@@ -211,8 +213,8 @@ async def criar_divisao_endpoint(request: CriarDivisaoRequest, current_user: dic
         # Pega o user_id do token JWT
         user_id = get_user_id_or_error(current_user)
         
-        # Cria a divisão no banco
-        divisao_db = db.create_divisao(user_id=user_id)
+        # Cria a divisão no banco (com nome opcional)
+        divisao_db = db.create_divisao(user_id=user_id, nome=request.nome or "Divisão sem nome")
         if not divisao_db:
             raise HTTPException(status_code=500, detail="Erro ao criar divisão no banco")
         

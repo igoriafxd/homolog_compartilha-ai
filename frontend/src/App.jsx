@@ -35,11 +35,12 @@ function AppContent() {
     setScreen('distribution');
   };
   
-  const handlePeopleDefined = async (nomes) => {
+  const handlePeopleDefined = async (nomes, nomeDivisao = null) => {
     try {
       const response = await api.post('/api/criar-divisao', {
         itens: items,
         nomes_pessoas: nomes,
+        nome: nomeDivisao,  // Nome da divisão (opcional)
       });
       setDivisionData(response.data);
       setScreen('distribution');

@@ -33,6 +33,7 @@ class Divisao(BaseModel):
     Contém a lista de todos os itens, todas as pessoas e as configurações da conta.
     """
     id: str = Field(default_factory=lambda: f"divisao_{uuid.uuid4().hex}")
+    nome: str = Field(default="Divisão sem nome")  # Nome da divisão
     itens: List[Item]
     pessoas: List[Pessoa]
     status: str = "em_andamento"
