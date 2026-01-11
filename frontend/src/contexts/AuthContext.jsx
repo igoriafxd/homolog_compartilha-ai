@@ -135,6 +135,24 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateProfile = async (updates) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      setProfile(data);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao atualizar perfil:', error);
+      return { data: null, error };
+    }
+  };
+
   const value = {
     user,
     profile,
@@ -144,6 +162,7 @@ export function AuthProvider({ children }) {
     signOut,
     resetPassword,
     signInWithGoogle,
+    updateProfile,
     isAuthenticated: !!user,
   };
 

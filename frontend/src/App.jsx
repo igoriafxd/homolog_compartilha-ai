@@ -6,7 +6,7 @@ import UploadScreen from './components/UploadScreen';
 import PeopleScreen from './components/PeopleScreen';
 import DistributionScreen from './components/DistributionScreen';
 import SummaryScreen from './components/SummaryScreen';
-import { LogOut } from 'lucide-react';
+import { LogOut, Sparkles } from 'lucide-react';
 
 // Componente interno que usa o contexto de autenticação
 function AppContent() {
@@ -27,6 +27,12 @@ function AppContent() {
   const handleManualStart = () => {
     setItems([]);
     setScreen('people');
+  };
+
+  // Continuar uma divisão em andamento (vindo do histórico)
+  const handleContinueDivisao = (divisao) => {
+    setDivisionData(divisao);
+    setScreen('distribution');
   };
   
   const handlePeopleDefined = async (nomes) => {
@@ -87,75 +93,105 @@ function AppContent() {
     return <LoginScreen />;
   }
 
-  // --- HEADER COM USUÁRIO LOGADO ---
-  const UserHeader = () => (
-    <div className="fixed top-4 right-4 z-50 flex items-center gap-3 bg-white/10 backdrop-blur-xl rounded-full px-4 py-2 border border-white/20">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
-          {profile?.nome?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+  // --- HEADER COMPACTO PARA OUTRAS TELAS (não upload) ---
+  const CompactHeader = () => (
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white/5 backdrop-blur-md border-b border-white/10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        {/* Logo */}
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-teal-400" />
+          <span className="text-lg font-bold text-white">
+            Compartilha <span className="text-teal-400">AI</span>
+          </span>
         </div>
-        <span className="text-white text-sm font-medium hidden sm:block max-w-[120px] truncate">
-          {profile?.nome || user?.email?.split('@')[0] || 'Usuário'}
-        </span>
+
+        {/* User Info + Logout */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
+              {profile?.nome?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <span className="text-white text-sm font-medium hidden sm:block max-w-[120px] truncate">
+              {profile?.nome || user?.email?.split('@')[0] || 'Usuário'}
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300 hover:text-red-400"
+            title="Sair"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-      <button
-        onClick={handleLogout}
-        className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300 hover:text-red-400"
-        title="Sair"
-      >
-        <LogOut className="w-4 h-4" />
-      </button>
-    </div>
+    </header>
+  );
+
+  // --- WRAPPER PARA TELAS COM HEADER COMPACTO ---
+  const ScreenWithHeader = ({ children }) => (
+    <>
+      <CompactHeader />
+      <div className="pt-16">
+        {children}
+      </div>
+    </>
   );
 
   // --- LÓGICA DE RENDERIZAÇÃO ---
+  
+  // Upload Screen - TEM SEU PRÓPRIO HEADER
+  if (screen === 'upload') {
+    return (
+      <UploadScreen 
+        onScanComplete={handleScanComplete} 
+        onManualStart={handleManualStart}
+        onContinueDivisao={handleContinueDivisao}
+      />
+    );
+  }
+
+  // Summary Screen
   if (screen === 'summary') {
     return (
-      <>
-        <UserHeader />
+      <ScreenWithHeader>
         <SummaryScreen 
           totais={finalTotals} 
           divisionData={divisionData}
           onReset={handleReset} 
           onGoBack={handleGoBackToDistribution} 
         />
-      </>
+      </ScreenWithHeader>
     );
   }
 
+  // Distribution Screen
   if (screen === 'distribution') {
     return (
-      <>
-        <UserHeader />
+      <ScreenWithHeader>
         <DistributionScreen
           divisionData={divisionData}
           onDivisionUpdate={handleDivisionUpdate}
           onGoBack={handleReset}
           onFinalize={handleFinalize}
         />
-      </>
+      </ScreenWithHeader>
     );
   }
 
+  // People Screen
   if (screen === 'people') {
     return (
-      <>
-        <UserHeader />
+      <ScreenWithHeader>
         <PeopleScreen
           onBack={handleReset}
           onComplete={handlePeopleDefined}
         />
-      </>
+      </ScreenWithHeader>
     );
   }
 
-  // Tela padrão é 'upload'
-  return (
-    <>
-      <UserHeader />
-      <UploadScreen onScanComplete={handleScanComplete} onManualStart={handleManualStart} />
-    </>
-  );
+  // Fallback
+  return null;
 }
 
 // Componente principal que envolve tudo com o AuthProvider
