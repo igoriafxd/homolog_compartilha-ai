@@ -1,5 +1,5 @@
 // DistributionScreen V2 - Com nome editável, loading states e visual melhorado
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, ArrowLeft, Check, DollarSign, Users, Settings, Pencil, Save, X, LoaderCircle } from 'lucide-react';
 import api from '../services/api';
 import ItemCard from './ItemCard';
@@ -11,8 +11,6 @@ import ModalConfirmacao from './ModalConfirmacao';
 
 export default function DistributionScreen({ divisionData: initialDivisionData, onDivisionUpdate, onGoBack, onFinalize }) {
   const [divisionData, setDivisionData] = useState(initialDivisionData);
-  const [totais, setTotais] = useState(null);
-  const [isLoadingTotals, setIsLoadingTotals] = useState(true);
   const [itemParaDistribuir, setItemParaDistribuir] = useState(null);
   const [taxaServico, setTaxaServico] = useState(initialDivisionData.taxa_servico_percentual);
   const [desconto, setDesconto] = useState(initialDivisionData.desconto_valor);
@@ -31,6 +29,74 @@ export default function DistributionScreen({ divisionData: initialDivisionData, 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingAction, setProcessingAction] = useState(''); // 'distribuir', 'item', 'pessoa', 'config', 'finalizar'
 
+  // Calcula totais localmente (sem depender da API)
+  const totais = useMemo(() => {
+    const itens = divisionData.itens || [];
+    const pessoas = divisionData.pessoas || [];
+    const taxaPercentual = divisionData.taxa_servico_percentual || 10;
+    const descontoValor = divisionData.desconto_valor || 0;
+    
+    // Subtotal = soma de todos os itens
+    const subtotalGeral = itens.reduce((acc, item) => 
+      acc + (item.quantidade * item.valor_unitario), 0);
+    
+    // Calcula total por pessoa
+    const pessoasComTotais = pessoas.map(pessoa => {
+      let subtotalPessoa = 0;
+      const itensConsumidos = [];
+      
+      itens.forEach(item => {
+        const qtdConsumida = item.atribuido_a?.[pessoa.id] || 0;
+        if (qtdConsumida > 0) {
+          const valorItem = qtdConsumida * item.valor_unitario;
+          subtotalPessoa += valorItem;
+          itensConsumidos.push({
+            nome: item.nome,
+            quantidade: qtdConsumida,
+            valor: valorItem
+          });
+        }
+      });
+      
+      // Proporcional de taxa e desconto
+      const proporcao = subtotalGeral > 0 ? subtotalPessoa / subtotalGeral : 0;
+      const descontoPessoa = descontoValor * proporcao;
+      const taxaPessoa = (subtotalPessoa - descontoPessoa) * (taxaPercentual / 100);
+      const totalPessoa = subtotalPessoa - descontoPessoa + taxaPessoa;
+      
+      return {
+        nome: pessoa.nome,
+        subtotal: subtotalPessoa,
+        desconto: descontoPessoa,
+        taxa: taxaPessoa,
+        total: totalPessoa,
+        itens: itensConsumidos
+      };
+    });
+    
+    // Total distribuído
+    const totalDistribuido = pessoasComTotais.reduce((acc, p) => acc + p.subtotal, 0);
+    
+    // Progresso
+    const percentualDistribuido = subtotalGeral > 0 
+      ? Math.round((totalDistribuido / subtotalGeral) * 100) 
+      : 0;
+    
+    // Itens restantes (não 100% distribuídos)
+    const itensRestantes = itens.filter(item => {
+      const qtdDistribuida = Object.values(item.atribuido_a || {}).reduce((a, b) => a + b, 0);
+      return qtdDistribuida < item.quantidade;
+    }).length;
+    
+    return {
+      pessoas: pessoasComTotais,
+      progresso: {
+        percentual_distribuido: percentualDistribuido,
+        itens_restantes: itensRestantes
+      }
+    };
+  }, [divisionData]);
+
   const handleToggleExpand = (personId) => {
     setExpandedPersonId(prevId => (prevId === personId ? null : personId));
   };
@@ -43,28 +109,6 @@ export default function DistributionScreen({ divisionData: initialDivisionData, 
     { name: 'amber', bg: 'bg-amber-500', border: 'border-amber-500/30', text: 'text-amber-400', hover: 'hover:bg-amber-500/20' },
     { name: 'emerald', bg: 'bg-emerald-500', border: 'border-emerald-500/30', text: 'text-emerald-400', hover: 'hover:bg-emerald-500/20' },
   ];
-
-  const fetchTotals = useCallback(async (silent = false) => {
-    // Se não é silencioso, mostra loading (carregamento inicial)
-    if (!silent) {
-      setIsLoadingTotals(true);
-    }
-    try {
-      const response = await api.get(`/api/calcular-totais/${divisionData.id}`);
-      setTotais(response.data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      if (!silent) {
-        setIsLoadingTotals(false);
-      }
-    }
-  }, [divisionData.id]);
-
-  // Busca totais apenas quando o ID da divisão muda (carregamento inicial)
-  useEffect(() => {
-    fetchTotals(false); // Não é silencioso no carregamento inicial
-  }, [divisionData.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounce para salvar configurações
   useEffect(() => {
@@ -98,8 +142,6 @@ export default function DistributionScreen({ divisionData: initialDivisionData, 
       const response = await apiPromise;
       onDivisionUpdate(response.data);
       setDivisionData(response.data);
-      // Atualiza totais silenciosamente (sem zerar os valores na tela)
-      await fetchTotals(true);
       return response.data;
     } catch (error) {
       console.error(error);
@@ -224,8 +266,8 @@ export default function DistributionScreen({ divisionData: initialDivisionData, 
   const valorAposDesconto = subtotalGeral - (parseFloat(desconto) || 0);
   const taxaTotal = valorAposDesconto * ((parseFloat(taxaServico) || 0) / 100);
   const totalGeral = valorAposDesconto + taxaTotal;
-  const itensRestantes = totais?.progresso.itens_restantes || 0;
-  const percentualDistribuido = totais?.progresso.percentual_distribuido || 0;
+  const itensRestantes = totais.progresso.itens_restantes;
+  const percentualDistribuido = totais.progresso.percentual_distribuido;
 
   return (
     <>
@@ -490,7 +532,7 @@ export default function DistributionScreen({ divisionData: initialDivisionData, 
               <div className="flex-shrink-0 pt-4 border-t border-white/10">
                 <button 
                   onClick={handleFinalize} 
-                  disabled={!totais || itensRestantes > 0 || isProcessing} 
+                  disabled={itensRestantes > 0 || isProcessing} 
                   className="w-full px-8 py-4 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold text-lg rounded-xl hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-teal-500/50 flex items-center justify-center gap-2 active:scale-[0.98]"
                 >
                   {processingAction === 'finalizar' ? (

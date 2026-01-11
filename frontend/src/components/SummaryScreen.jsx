@@ -84,11 +84,11 @@ export default function SummaryScreen({ totais, divisionData, onGoHome }) {
   };
 
   const createSimpleShareText = () => {
-    let text = `🧾 *${nomeDivisao}*\n\n`;
+    let text = `*${nomeDivisao}*\n\n`;
     text += rankedPessoas.map(pessoa => {
-      return `👤 ${pessoa.nome}: R$ ${pessoa.total.toFixed(2)}`;
+      return `> ${pessoa.nome}: R$ ${pessoa.total.toFixed(2)}`;
     }).join('\n');
-    text += `\n\n💰 *Total: R$ ${totalDaConta.toFixed(2)}*`;
+    text += `\n\n*Total: R$ ${totalDaConta.toFixed(2)}*`;
     text += `\n\n_Dividido com Compartilha AI_`;
     return text;
   };
@@ -98,11 +98,11 @@ export default function SummaryScreen({ totais, divisionData, onGoHome }) {
       return createSimpleShareText();
     }
 
-    let text = `🧾 *${nomeDivisao}*\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let text = `*${nomeDivisao}*\n`;
+    text += `--------------------\n\n`;
 
     divisionData.pessoas.forEach(pessoa => {
-      text += `👤 *${pessoa.nome.toUpperCase()}*\n`;
+      text += `*${pessoa.nome.toUpperCase()}*\n`;
       
       let itensDaPessoa = 0;
       divisionData.itens.forEach(item => {
@@ -110,22 +110,22 @@ export default function SummaryScreen({ totais, divisionData, onGoHome }) {
           itensDaPessoa++;
           const quantidadeConsumida = item.atribuido_a[pessoa.id];
           const valorPago = quantidadeConsumida * item.valor_unitario;
-          text += `   • (${toFraction(quantidadeConsumida)}) ${item.nome}: R$ ${valorPago.toFixed(2)}\n`;
+          text += `  - (${toFraction(quantidadeConsumida)}) ${item.nome}: R$ ${valorPago.toFixed(2)}\n`;
         }
       });
 
       if (itensDaPessoa === 0) {
-        text += `   (Nenhum item)\n`;
+        text += `  (Nenhum item)\n`;
       }
 
       const pessoaTotal = totais.pessoas.find(p => p.nome === pessoa.nome);
       if (pessoaTotal) {
-        text += `   *Total: R$ ${pessoaTotal.total.toFixed(2)}*\n\n`;
+        text += `  *Total: R$ ${pessoaTotal.total.toFixed(2)}*\n\n`;
       }
     });
 
-    text += `━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `💰 *TOTAL GERAL: R$ ${totalDaConta.toFixed(2)}*\n\n`;
+    text += `--------------------\n`;
+    text += `*TOTAL GERAL: R$ ${totalDaConta.toFixed(2)}*\n\n`;
     text += `_Dividido com Compartilha AI_`;
     return text;
   };

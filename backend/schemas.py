@@ -6,7 +6,7 @@
 # evitando bugs e tornando a API mais segura e previsível.
 
 from pydantic import BaseModel, Field
-from typing import List, Dict
+from typing import List, Dict, Optional
 import uuid
 
 
@@ -39,6 +39,7 @@ class Divisao(BaseModel):
     status: str = "em_andamento"
     taxa_servico_percentual: float = Field(default=10.0, ge=0, le=100)
     desconto_valor: float = Field(default=0.0, ge=0)
+    created_at: Optional[str] = None  # Data de criação
 
 
 # --- Modelos para Requisições e Respostas da API ---

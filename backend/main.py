@@ -106,7 +106,8 @@ def db_divisao_to_response(divisao_db: dict) -> Divisao:
         ],
         status=divisao_db.get("status", "em_andamento"),
         taxa_servico_percentual=float(divisao_db.get("taxa_servico_percentual", 10.0)),
-        desconto_valor=float(divisao_db.get("desconto_valor", 0.0))
+        desconto_valor=float(divisao_db.get("desconto_valor", 0.0)),
+        created_at=divisao_db.get("created_at")
     )
 
 
@@ -296,6 +297,79 @@ async def deletar_divisao_endpoint(divisao_id: str, current_user: dict = Depends
         raise
     except Exception as e:
         logger.error(f"Erro ao deletar divisão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/divisao/{divisao_id}/duplicar", response_model=Divisao)
+async def duplicar_divisao_endpoint(divisao_id: str, current_user: dict = Depends(get_current_user)):
+    """Duplica uma divisão existente com novo ID e status em_andamento."""
+    try:
+        user_id = get_user_id_or_error(current_user)
+        
+        # Busca a divisão original completa
+        divisao_original = db.get_divisao_completa(divisao_id)
+        if not divisao_original:
+            raise HTTPException(status_code=404, detail="Divisão não encontrada.")
+        
+        # Verifica se pertence ao usuário
+        if divisao_original.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Sem permissão para duplicar esta divisão.")
+        
+        # Cria nova divisão
+        nova_divisao = db.create_divisao(
+            user_id=user_id,
+            nome=f"{divisao_original.get('nome', 'Divisão')} (cópia)",
+            taxa_servico=float(divisao_original.get("taxa_servico_percentual", 10.0)),
+            desconto=float(divisao_original.get("desconto_valor", 0.0))
+        )
+        
+        if not nova_divisao:
+            raise HTTPException(status_code=500, detail="Erro ao criar nova divisão.")
+        
+        nova_divisao_id = nova_divisao["id"]
+        
+        # Mapeia IDs antigos para novos (para atribuições)
+        pessoas_map = {}  # {id_antigo: id_novo}
+        itens_map = {}    # {id_antigo: id_novo}
+        
+        # Copia pessoas
+        pessoas_originais = divisao_original.get("pessoas", [])
+        for pessoa in pessoas_originais:
+            nova_pessoa = db.create_pessoa(nova_divisao_id, pessoa["nome"])
+            if nova_pessoa:
+                pessoas_map[pessoa["id"]] = nova_pessoa["id"]
+        
+        # Copia itens
+        itens_originais = divisao_original.get("itens", [])
+        for item in itens_originais:
+            novo_item = db.create_item(
+                divisao_id=nova_divisao_id,
+                nome=item["nome"],
+                quantidade=float(item["quantidade"]),
+                valor_unitario=float(item["valor_unitario"])
+            )
+            if novo_item:
+                itens_map[item["id"]] = novo_item["id"]
+                
+                # Copia atribuições deste item
+                atribuicoes = item.get("atribuido_a", {})
+                for pessoa_id_antigo, quantidade in atribuicoes.items():
+                    pessoa_id_novo = pessoas_map.get(pessoa_id_antigo)
+                    if pessoa_id_novo and quantidade > 0:
+                        db.create_atribuicao(novo_item["id"], pessoa_id_novo, float(quantidade))
+        
+        # Busca a divisão completa para retornar
+        divisao_completa = db.get_divisao_completa(nova_divisao_id)
+        if not divisao_completa:
+            raise HTTPException(status_code=500, detail="Erro ao buscar divisão criada.")
+        
+        logger.info(f"Divisão '{divisao_id}' duplicada para '{nova_divisao_id}' pelo usuário '{user_id[:8]}...'")
+        return db_divisao_to_response(divisao_completa)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao duplicar divisão: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

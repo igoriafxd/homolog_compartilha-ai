@@ -2,13 +2,126 @@
 import { useState, useEffect } from 'react';
 import { 
   Upload, ArrowRight, LoaderCircle, Camera, Sparkles, 
-  Menu, X, User, History, LogOut, ChevronRight, Clock, 
-  Search, Calendar, Users, Eye, Share2, PlayCircle, Trash2
+  Menu, X, User, History, LogOut, ChevronRight, ChevronDown, Clock, 
+  Search, Calendar, Users, Eye, Share2, PlayCircle, Trash2, Copy
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
 import ModalConfirmacao from './ModalConfirmacao';
+
+// Modal de Compartilhamento
+function ShareModal({ item, onClose, formatCurrency, formatDate }) {
+  const [isSharing, setIsSharing] = useState(false);
+
+  function toFraction(decimal, tolerance = 0.01) {
+    if (Math.abs(decimal - Math.round(decimal)) < tolerance) {
+      return Math.round(decimal).toString();
+    }
+    const fractions = [
+      { dec: 1/2, str: '½' }, { dec: 1/3, str: '⅓' }, { dec: 2/3, str: '⅔' },
+      { dec: 1/4, str: '¼' }, { dec: 3/4, str: '¾' }, { dec: 1/5, str: '⅕' },
+    ];
+    for (const f of fractions) {
+      if (Math.abs(decimal - f.dec) < tolerance) {
+        return f.str;
+      }
+    }
+    return decimal.toFixed(1);
+  }
+
+  const createSimpleShareText = () => {
+    let text = `*${item.nome || 'Divisão de Conta'}*\n`;
+    text += `Data: ${formatDate(item.created_at)}\n\n`;
+    item.pessoas?.forEach(p => {
+      text += `> ${p.nome}: ${formatCurrency(p.total)}\n`;
+    });
+    text += `\n*Total: ${formatCurrency(item.totalFinal)}*`;
+    text += `\n\n_Dividido com Compartilha AI_`;
+    return text;
+  };
+
+  const createDetailedShareText = () => {
+    let text = `*${item.nome || 'Divisão de Conta'}*\n`;
+    text += `Data: ${formatDate(item.created_at)}\n`;
+    text += `--------------------\n\n`;
+    
+    item.pessoas?.forEach(pessoa => {
+      text += `*${pessoa.nome.toUpperCase()}*\n`;
+      
+      if (pessoa.itens && pessoa.itens.length > 0) {
+        pessoa.itens.forEach(itemConsumido => {
+          const qtdStr = `(${toFraction(itemConsumido.quantidade)})`;
+          text += `  - ${qtdStr} ${itemConsumido.nome}: ${formatCurrency(itemConsumido.valor)}\n`;
+        });
+      } else {
+        text += `  (Nenhum item)\n`;
+      }
+      
+      text += `  *Total: ${formatCurrency(pessoa.total)}*\n\n`;
+    });
+    
+    text += `--------------------\n`;
+    text += `*TOTAL GERAL: ${formatCurrency(item.totalFinal)}*\n\n`;
+    text += `_Dividido com Compartilha AI_`;
+    return text;
+  };
+
+  const handleShare = async (type) => {
+    setIsSharing(true);
+    try {
+      const shareText = type === 'detalhado' ? createDetailedShareText() : createSimpleShareText();
+      const isMobile = /Mobi/i.test(window.navigator.userAgent);
+
+      if (isMobile && navigator.share) {
+        await navigator.share({
+          title: item.nome || 'Divisão de Conta',
+          text: shareText,
+        });
+      } else {
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+        window.open(whatsappUrl, '_blank');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Erro ao compartilhar:', error);
+      }
+    } finally {
+      setIsSharing(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 font-sans">
+      <div className="w-full max-w-sm bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl text-center">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-white">Compartilhar</h3>
+          <button onClick={onClose} disabled={isSharing} className="text-gray-400 hover:text-white disabled:opacity-50">
+            <X size={24} />
+          </button>
+        </div>
+        <p className="text-gray-400 text-sm mb-6">Escolha o formato do resumo</p>
+        <div className="grid grid-cols-1 gap-4">
+          <button
+            onClick={() => handleShare('resumo')}
+            disabled={isSharing}
+            className="w-full px-6 py-4 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold rounded-xl hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg hover:shadow-teal-500/50 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isSharing ? <LoaderCircle className="w-5 h-5 animate-spin" /> : '📝'} Resumo Simples
+          </button>
+          <button
+            onClick={() => handleShare('detalhado')}
+            disabled={isSharing}
+            className="w-full px-6 py-4 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all border border-white/20 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isSharing ? <LoaderCircle className="w-5 h-5 animate-spin" /> : '📋'} Resumo Detalhado
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function UploadScreen({ onScanComplete, onManualStart, onContinueDivisao }) {
   // Auth
@@ -27,6 +140,8 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
   const [historyFilter, setHistoryFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedItem, setExpandedItem] = useState(null);
+  const [expandedPerson, setExpandedPerson] = useState(null); // { divisaoId, pessoaNome }
+  const [periodFilter, setPeriodFilter] = useState(3); // Meses (3 padrão, máx 12)
   
   // Data states
   const [historico, setHistorico] = useState([]);
@@ -40,13 +155,19 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
   
   // Delete confirmation state
   const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { id, nome }
+  
+  // Duplicate state
+  const [duplicatingId, setDuplicatingId] = useState(null);
+  
+  // Share modal state
+  const [shareModal, setShareModal] = useState(null); // item para compartilhar
 
-  // Carrega histórico quando abre o modal
+  // Carrega histórico quando abre o modal ou muda período
   useEffect(() => {
     if (showHistory) {
       fetchHistorico();
     }
-  }, [showHistory]);
+  }, [showHistory, periodFilter]);
 
   // Inicializa campos de edição quando abre o modal de perfil
   useEffect(() => {
@@ -62,33 +183,87 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
     try {
       const response = await api.get('/api/divisoes');
       
-      // Busca totais para cada divisão
-      const divisoesComTotais = await Promise.all(
-        response.data.map(async (divisao) => {
-          try {
-            const totaisResponse = await api.get(`/api/calcular-totais/${divisao.id}`);
-            const total = totaisResponse.data.pessoas.reduce((acc, p) => acc + p.total, 0);
-            return {
-              ...divisao,
-              total,
-              peopleCount: divisao.pessoas?.length || 0,
-              pessoas: totaisResponse.data.pessoas.map(p => ({
-                nome: p.nome,
-                total: p.total
-              }))
-            };
-          } catch {
-            return {
-              ...divisao,
-              total: 0,
-              peopleCount: divisao.pessoas?.length || 0,
-              pessoas: []
-            };
-          }
-        })
-      );
+      // Filtra por período (últimos X meses)
+      const dataLimite = new Date();
+      dataLimite.setMonth(dataLimite.getMonth() - periodFilter);
       
-      setHistorico(divisoesComTotais);
+      const divisoesFiltradas = response.data.filter(divisao => {
+        if (!divisao.created_at) return true;
+        const dataDivisao = new Date(divisao.created_at);
+        if (isNaN(dataDivisao.getTime())) return true;
+        return dataDivisao >= dataLimite;
+      });
+      
+      // Calcula totais no frontend (sem requisições extras!)
+      const divisoesProcessadas = divisoesFiltradas.map(divisao => {
+        const itens = divisao.itens || [];
+        const pessoas = divisao.pessoas || [];
+        const taxaPercentual = divisao.taxa_servico_percentual || 10;
+        const descontoValor = divisao.desconto_valor || 0;
+        
+        // Subtotal = soma de todos os itens
+        const subtotal = itens.reduce((acc, item) => 
+          acc + (item.quantidade * item.valor_unitario), 0);
+        
+        // Total com taxa e desconto
+        const valorComDesconto = subtotal - descontoValor;
+        const taxa = valorComDesconto * (taxaPercentual / 100);
+        const totalFinal = valorComDesconto + taxa;
+        
+        // Itens pendentes
+        const itensPendentes = itens.filter(item => {
+          const qtdDistribuida = Object.values(item.atribuido_a || {}).reduce((a, b) => a + b, 0);
+          return qtdDistribuida < item.quantidade;
+        }).length;
+        
+        // Calcula total por pessoa
+        const pessoasComTotais = pessoas.map(pessoa => {
+          let subtotalPessoa = 0;
+          const itensConsumidos = [];
+          
+          itens.forEach(item => {
+            const qtdConsumida = item.atribuido_a?.[pessoa.id] || 0;
+            if (qtdConsumida > 0) {
+              const valorItem = qtdConsumida * item.valor_unitario;
+              subtotalPessoa += valorItem;
+              itensConsumidos.push({
+                nome: item.nome,
+                quantidade: qtdConsumida,
+                valor: valorItem
+              });
+            }
+          });
+          
+          // Proporcional de taxa e desconto
+          const proporcao = subtotal > 0 ? subtotalPessoa / subtotal : 0;
+          const descontoPessoa = descontoValor * proporcao;
+          const taxaPessoa = (subtotalPessoa - descontoPessoa) * (taxaPercentual / 100);
+          const totalPessoa = subtotalPessoa - descontoPessoa + taxaPessoa;
+          
+          return {
+            id: pessoa.id,
+            nome: pessoa.nome,
+            subtotal: subtotalPessoa,
+            desconto: descontoPessoa,
+            taxa: taxaPessoa,
+            total: totalPessoa,
+            itens: itensConsumidos
+          };
+        });
+        
+        return {
+          ...divisao,
+          subtotal,
+          taxa,
+          desconto: descontoValor,
+          totalFinal,
+          itensPendentes,
+          peopleCount: pessoas.length,
+          pessoas: pessoasComTotais
+        };
+      });
+      
+      setHistorico(divisoesProcessadas);
     } catch (err) {
       console.error('Erro ao buscar histórico:', err);
     } finally {
@@ -216,20 +391,22 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
     }
   };
 
-  // Compartilhar via WhatsApp
-  const shareToWhatsApp = (item) => {
-    let msg = `🧾 *Divisão de Conta*\n`;
-    if (item.nome) msg += `📍 ${item.nome}\n`;
-    msg += `📅 ${formatDate(item.created_at)}\n\n`;
-    
-    item.pessoas?.forEach(p => {
-      msg += `👤 ${p.nome}: ${formatCurrency(p.total)}\n`;
-    });
-    
-    msg += `\n💰 *Total: ${formatCurrency(item.total)}*`;
-    msg += `\n\n_Dividido com Compartilha AI_`;
-    
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  // Duplicar divisão
+  const handleDuplicate = async (divisao) => {
+    setDuplicatingId(divisao.id);
+    try {
+      const response = await api.post(`/api/divisao/${divisao.id}/duplicar`);
+      // Abre a divisão duplicada direto na tela de distribuição
+      setShowHistory(false);
+      if (onContinueDivisao) {
+        onContinueDivisao(response.data);
+      }
+    } catch (err) {
+      console.error('Erro ao duplicar:', err);
+      alert('Erro ao duplicar divisão. Tente novamente.');
+    } finally {
+      setDuplicatingId(null);
+    }
   };
 
   // Helpers
@@ -447,7 +624,7 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                 <h2 className="text-xl sm:text-2xl font-bold text-white">Histórico</h2>
               </div>
               <button
-                onClick={() => { setShowHistory(false); setSearchTerm(''); setExpandedItem(null); }}
+                onClick={() => { setShowHistory(false); setSearchTerm(''); setExpandedItem(null); setExpandedPerson(null); }}
                 className="p-2 rounded-lg hover:bg-white/10 transition-all text-gray-400 hover:text-white"
               >
                 <X className="w-6 h-6" />
@@ -469,7 +646,7 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
               </div>
 
               {/* Filtros de Status */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 <button
                   onClick={() => setHistoryFilter('all')}
                   className={`py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
@@ -500,6 +677,20 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                 >
                   Finalizadas ({historico.filter(h => h.status === 'finalizada').length})
                 </button>
+                
+                {/* Filtro de Período */}
+                <div className="ml-auto">
+                  <select
+                    value={periodFilter}
+                    onChange={(e) => setPeriodFilter(Number(e.target.value))}
+                    className="bg-white/5 border border-white/20 rounded-lg py-2 px-3 text-sm text-gray-300 focus:outline-none focus:border-teal-400 transition-all cursor-pointer"
+                  >
+                    <option value={1} className="bg-slate-800">Último mês</option>
+                    <option value={3} className="bg-slate-800">Últimos 3 meses</option>
+                    <option value={6} className="bg-slate-800">Últimos 6 meses</option>
+                    <option value={12} className="bg-slate-800">Último ano</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -538,9 +729,15 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                               <Calendar className="w-4 h-4" />
                               {formatDate(item.created_at)}
                             </p>
+                            {/* Info de itens pendentes para em andamento */}
+                            {item.status === 'em_andamento' && item.itensPendentes > 0 && (
+                              <p className="text-amber-400 text-xs mt-1">
+                                {item.itensPendentes} {item.itensPendentes === 1 ? 'item pendente' : 'itens pendentes'}
+                              </p>
+                            )}
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold text-teal-400">{formatCurrency(item.total)}</p>
+                            <p className="text-2xl font-bold text-teal-400">{formatCurrency(item.totalFinal)}</p>
                             <p className="text-gray-400 text-sm flex items-center justify-end gap-1">
                               <Users className="w-4 h-4" />
                               {item.peopleCount} pessoas
@@ -551,28 +748,54 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                         {/* Ações */}
                         <div className="flex gap-2 mt-4 flex-wrap">
                           <button
-                            onClick={() => setExpandedItem(expandedItem === item.id ? null : item.id)}
-                            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all text-sm"
+                            onClick={() => {
+                              setExpandedItem(expandedItem === item.id ? null : item.id);
+                              setExpandedPerson(null);
+                            }}
+                            className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all text-sm"
+                            title={expandedItem === item.id ? 'Ocultar detalhes' : 'Ver detalhes'}
                           >
                             <Eye className="w-4 h-4" />
-                            {expandedItem === item.id ? 'Ocultar' : 'Detalhes'}
+                            <span className="hidden sm:inline">{expandedItem === item.id ? 'Ocultar' : 'Detalhes'}</span>
                           </button>
                           
                           {item.status === 'em_andamento' ? (
                             <button 
                               onClick={() => handleContinue(item)}
-                              className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold transition-all text-sm"
+                              disabled={loadingContinue === item.id}
+                              className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold transition-all text-sm disabled:opacity-50"
+                              title="Continuar divisão"
                             >
-                              <PlayCircle className="w-4 h-4" />
+                              {loadingContinue === item.id ? (
+                                <LoaderCircle className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <PlayCircle className="w-4 h-4" />
+                              )}
                               Continuar
                             </button>
                           ) : (
                             <button
-                              onClick={() => shareToWhatsApp(item)}
-                              className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold transition-all text-sm"
+                              onClick={() => setShareModal(item)}
+                              className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold transition-all text-sm"
+                              title="Compartilhar"
                             >
                               <Share2 className="w-4 h-4" />
                               Compartilhar
+                            </button>
+                          )}
+
+                          {item.status === 'finalizada' && (
+                            <button
+                              onClick={() => handleDuplicate(item)}
+                              disabled={duplicatingId === item.id}
+                              className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 transition-all text-sm disabled:opacity-50"
+                              title="Duplicar divisão"
+                            >
+                              {duplicatingId === item.id ? (
+                                <LoaderCircle className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
                             </button>
                           )}
 
@@ -594,17 +817,62 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                             Divisão por pessoa
                           </h4>
                           <div className="space-y-2">
-                            {item.pessoas?.map((pessoa, idx) => (
-                              <div key={idx} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/5">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
-                                    {getInitial(pessoa.nome)}
-                                  </div>
-                                  <span className="text-white font-medium">{pessoa.nome}</span>
+                            {item.pessoas?.map((pessoa, idx) => {
+                              const isPersonExpanded = expandedPerson?.divisaoId === item.id && expandedPerson?.pessoaNome === pessoa.nome;
+                              const hasItens = pessoa.itens && pessoa.itens.length > 0;
+                              
+                              return (
+                                <div key={idx} className="rounded-lg bg-white/5 overflow-hidden">
+                                  {/* Header da pessoa - clicável se tiver itens */}
+                                  <button
+                                    onClick={() => hasItens && setExpandedPerson(
+                                      isPersonExpanded ? null : { divisaoId: item.id, pessoaNome: pessoa.nome }
+                                    )}
+                                    disabled={!hasItens}
+                                    className={`w-full flex items-center justify-between py-3 px-4 ${hasItens ? 'cursor-pointer hover:bg-white/5' : 'cursor-default'} transition-colors`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
+                                        {getInitial(pessoa.nome)}
+                                      </div>
+                                      <div className="text-left">
+                                        <span className="text-white font-medium">{pessoa.nome}</span>
+                                        {hasItens && (
+                                          <p className="text-gray-500 text-xs">
+                                            {pessoa.itens.length} {pessoa.itens.length === 1 ? 'item' : 'itens'}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-teal-400 font-bold">{formatCurrency(pessoa.total)}</span>
+                                      {hasItens && (
+                                        <ChevronDown 
+                                          className={`w-4 h-4 text-gray-400 transition-transform ${isPersonExpanded ? 'rotate-180' : ''}`} 
+                                        />
+                                      )}
+                                    </div>
+                                  </button>
+                                  
+                                  {/* Itens consumidos - expandível */}
+                                  {isPersonExpanded && hasItens && (
+                                    <div className="px-4 pb-3 pt-1 border-t border-white/5">
+                                      <div className="space-y-1">
+                                        {pessoa.itens.map((itemConsumido, itemIdx) => (
+                                          <div key={itemIdx} className="flex justify-between text-sm">
+                                            <span className="text-gray-400">
+                                              {itemConsumido.quantidade !== 1 && `(${Number(itemConsumido.quantidade).toFixed(itemConsumido.quantidade % 1 === 0 ? 0 : 1)}x) `}
+                                              {itemConsumido.nome}
+                                            </span>
+                                            <span className="text-gray-500">{formatCurrency(itemConsumido.valor)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                                <span className="text-teal-400 font-bold">{formatCurrency(pessoa.total)}</span>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -719,6 +987,16 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
           mensagem={`Deseja realmente excluir "${deleteConfirmation.nome || 'esta divisão'}"? Esta ação não pode ser desfeita.`}
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteConfirmation(null)}
+        />
+      )}
+
+      {/* Modal de Compartilhamento */}
+      {shareModal && (
+        <ShareModal
+          item={shareModal}
+          onClose={() => setShareModal(null)}
+          formatCurrency={formatCurrency}
+          formatDate={formatDate}
         />
       )}
     </div>
