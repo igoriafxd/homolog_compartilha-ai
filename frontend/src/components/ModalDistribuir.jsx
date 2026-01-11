@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Users, Boxes, Check, X } from 'lucide-react';
+import { Users, Boxes, Check, X, LoaderCircle } from 'lucide-react';
 
 export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) {
   const [modo, setModo] = useState('quantidade');
   const [distribuicao, setDistribuicao] = useState({});
   const [selecionados, setSelecionados] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Verifica se a distribuição atual do item foi feita por valor (se tem casas decimais)
   const isDistribuicaoPorValor = Object.values(item.atribuido_a || {}).some(qtd => qtd % 1 !== 0);
@@ -15,7 +16,10 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
     setModo(isDistribuicaoPorValor ? 'valor' : 'quantidade');
 
     // Preenche o estado da aba "Quantidade"
-    const inicialQtde = pessoas.reduce((acc, p) => ({ ...acc, [p.id]: atribuicoesAtuais[p.id] || 0 }), {});
+    const inicialQtde = {};
+    pessoas.forEach(p => {
+      inicialQtde[p.id] = atribuicoesAtuais[p.id] || 0;
+    });
     setDistribuicao(inicialQtde);
 
     // Preenche o estado da aba "Valor"
@@ -28,8 +32,13 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
       const atual = prev[pessoaId] || 0;
       const novo = Math.max(0, atual + delta);
       const totalDistribuido = Object.values(prev).reduce((sum, val) => sum + val, 0) - atual + novo;
+      
       // Impede que a soma ultrapasse a quantidade total do item
-      return totalDistribuido > item.quantidade ? prev : { ...prev, [pessoaId]: novo };
+      if (totalDistribuido > item.quantidade) {
+        return prev;
+      }
+      
+      return { ...prev, [pessoaId]: novo };
     });
   };
 
@@ -42,17 +51,22 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
     : selecionados.length > 0 ? item.quantidade : 0;
   const restante = item.quantidade - totalAtual;
 
-  const handleSubmit = () => {
-    let distribuicaoFinal = [];
-    if (modo === 'quantidade') {
-      distribuicaoFinal = Object.entries(distribuicao)
-        .filter(([, q]) => q > 0)
-        .map(([pessoa_id, quantidade]) => ({ pessoa_id, quantidade: Number(quantidade) }));
-    } else {
-      const qtdPorPessoa = selecionados.length > 0 ? item.quantidade / selecionados.length : 0;
-      distribuicaoFinal = selecionados.map(pessoa_id => ({ pessoa_id, quantidade: qtdPorPessoa }));
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    try {
+      let distribuicaoFinal = [];
+      if (modo === 'quantidade') {
+        distribuicaoFinal = Object.entries(distribuicao)
+          .filter(([, q]) => q > 0)
+          .map(([pessoa_id, quantidade]) => ({ pessoa_id, quantidade: Number(quantidade) }));
+      } else {
+        const qtdPorPessoa = selecionados.length > 0 ? item.quantidade / selecionados.length : 0;
+        distribuicaoFinal = selecionados.map(pessoa_id => ({ pessoa_id, quantidade: qtdPorPessoa }));
+      }
+      await onConfirm(item.id, distribuicaoFinal);
+    } finally {
+      setIsLoading(false);
     }
-    onConfirm(item.id, distribuicaoFinal);
   };
 
   const formatarQuantidade = (qtd) => Number(qtd || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -66,10 +80,18 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
         </p>
 
         <div className="flex bg-slate-900 rounded-xl p-1 mb-4">
-          <button onClick={() => setModo('quantidade')} className={`w-1/2 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${modo === 'quantidade' ? 'bg-slate-700 shadow-sm text-teal-300' : 'text-gray-400 hover:bg-slate-800'}`}>
+          <button 
+            onClick={() => setModo('quantidade')} 
+            disabled={isLoading}
+            className={`w-1/2 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${modo === 'quantidade' ? 'bg-slate-700 shadow-sm text-teal-300' : 'text-gray-400 hover:bg-slate-800'}`}
+          >
             <Boxes size={16} /> Por Quantidade
           </button>
-          <button onClick={() => setModo('valor')} className={`w-1/2 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${modo === 'valor' ? 'bg-slate-700 shadow-sm text-teal-300' : 'text-gray-400 hover:bg-slate-800'}`}>
+          <button 
+            onClick={() => setModo('valor')} 
+            disabled={isLoading}
+            className={`w-1/2 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${modo === 'valor' ? 'bg-slate-700 shadow-sm text-teal-300' : 'text-gray-400 hover:bg-slate-800'}`}
+          >
             <Users size={16} /> Por Valor
           </button>
         </div>
@@ -85,13 +107,30 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
                   Este item foi dividido por valor. Para editar, use a aba "Por Valor".
                 </p>
               )}
-              {pessoas.map(pessoa => (
-                <div key={pessoa.id} className="flex items-center justify-between bg-white/5 p-2 rounded-lg">
-                  <span className="text-white">{pessoa.nome}</span>
+              {pessoas.map((pessoa, index) => (
+                <div 
+                  key={pessoa.id || `pessoa-${index}`} 
+                  className="flex items-center justify-between bg-white/5 p-3 rounded-lg"
+                >
+                  <span className="text-white font-medium">{pessoa.nome}</span>
                   <div className="flex items-center space-x-3">
-                    <button disabled={isDistribuicaoPorValor} onClick={() => handleQuantidadeChange(pessoa.id, -1)} className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50">-</button>
-                    <span className="w-10 text-center font-semibold text-white">{formatarQuantidade(distribuicao[pessoa.id])}</span>
-                    <button disabled={isDistribuicaoPorValor} onClick={() => handleQuantidadeChange(pessoa.id, 1)} className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50">+</button>
+                    <button 
+                      disabled={isDistribuicaoPorValor || isLoading} 
+                      onClick={() => handleQuantidadeChange(pessoa.id, -1)} 
+                      className="w-9 h-9 rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                    >
+                      -
+                    </button>
+                    <span className="w-10 text-center font-semibold text-white text-lg">
+                      {formatarQuantidade(distribuicao[pessoa.id])}
+                    </span>
+                    <button 
+                      disabled={isDistribuicaoPorValor || isLoading} 
+                      onClick={() => handleQuantidadeChange(pessoa.id, 1)} 
+                      className="w-9 h-9 rounded-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-lg flex items-center justify-center transition-colors"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               ))}
@@ -101,10 +140,21 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
               <div className="bg-teal-500/10 text-teal-300 text-xs p-3 rounded-lg">
                 <p>Selecione as pessoas para ratear o valor total do item igualmente entre elas.</p>
               </div>
-              {pessoas.map(pessoa => (
-                <label key={pessoa.id} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${selecionados.includes(pessoa.id) ? 'bg-teal-500/20 border-teal-400' : 'bg-white/5 border-transparent'}`} htmlFor={`check-${pessoa.id}`}>
+              {pessoas.map((pessoa, index) => (
+                <label 
+                  key={pessoa.id || `pessoa-valor-${index}`} 
+                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${selecionados.includes(pessoa.id) ? 'bg-teal-500/20 border border-teal-400' : 'bg-white/5 border border-transparent'} ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                  htmlFor={`check-${pessoa.id || index}`}
+                >
                   <span className="text-white font-medium">{pessoa.nome}</span>
-                  <input id={`check-${pessoa.id}`} type="checkbox" checked={selecionados.includes(pessoa.id)} onChange={() => handleSelecionadoChange(pessoa.id)} className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-teal-500 focus:ring-teal-500/50" />
+                  <input 
+                    id={`check-${pessoa.id || index}`} 
+                    type="checkbox" 
+                    checked={selecionados.includes(pessoa.id)} 
+                    onChange={() => !isLoading && handleSelecionadoChange(pessoa.id)} 
+                    disabled={isLoading}
+                    className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-teal-500 focus:ring-teal-500/50" 
+                  />
                 </label>
               ))}
             </>
@@ -112,11 +162,27 @@ export default function ModalDistribuir({ item, pessoas, onConfirm, onCancel }) 
         </div>
 
         <div className="flex justify-end space-x-4 mt-6">
-          <button onClick={onCancel} className="px-5 py-2 rounded-xl text-gray-300 font-semibold hover:bg-white/10 transition-colors flex items-center gap-2">
+          <button 
+            onClick={onCancel} 
+            disabled={isLoading}
+            className="px-5 py-2 rounded-xl text-gray-300 font-semibold hover:bg-white/10 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
             <X size={18} /> Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={modo === 'quantidade' && restante < -1e-9} className="px-6 py-2 rounded-xl bg-teal-500 text-white font-semibold hover:bg-teal-600 transition-all disabled:opacity-50 flex items-center gap-2">
-            <Check size={18} /> Confirmar
+          <button 
+            onClick={handleSubmit} 
+            disabled={(modo === 'quantidade' && restante < -1e-9) || isLoading} 
+            className="px-6 py-2 rounded-xl bg-teal-500 text-white font-semibold hover:bg-teal-600 transition-all disabled:opacity-50 flex items-center gap-2 min-w-[120px] justify-center"
+          >
+            {isLoading ? (
+              <>
+                <LoaderCircle size={18} className="animate-spin" /> Salvando...
+              </>
+            ) : (
+              <>
+                <Check size={18} /> Confirmar
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -23,7 +23,7 @@ class Item(BaseModel):
 
 class Pessoa(BaseModel):
     """Representa uma pessoa que está participando da divisão."""
-    id: str = Field(default_factory=lambda: f"pessoa_{uuid.uuid4().hex}")
+    id: str = Field(..., example="pessoa_abc123")  # Campo obrigatório
     nome: str = Field(min_length=1, example="João")
 
 

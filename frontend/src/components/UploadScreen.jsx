@@ -8,6 +8,7 @@ import {
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
+import ModalConfirmacao from './ModalConfirmacao';
 
 export default function UploadScreen({ onScanComplete, onManualStart, onContinueDivisao }) {
   // Auth
@@ -30,11 +31,15 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
   // Data states
   const [historico, setHistorico] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingContinue, setLoadingContinue] = useState(null); // ID da divisão sendo carregada
   
   // Profile edit states
   const [editNome, setEditNome] = useState('');
   const [editTelefone, setEditTelefone] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Delete confirmation state
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { id, nome }
 
   // Carrega histórico quando abre o modal
   useEffect(() => {
@@ -174,24 +179,40 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
     setMenuOpen(false);
   };
 
-  // Continuar divisão em andamento
-  const handleContinue = (divisao) => {
-    setShowHistory(false);
-    if (onContinueDivisao) {
-      onContinueDivisao(divisao);
+  // Continuar divisão em andamento - busca dados completos
+  const handleContinue = async (divisao) => {
+    setLoadingContinue(divisao.id);
+    try {
+      // Busca a divisão completa com IDs das pessoas
+      const response = await api.get(`/api/divisao/${divisao.id}`);
+      setShowHistory(false);
+      if (onContinueDivisao) {
+        onContinueDivisao(response.data);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar divisão:', err);
+      alert('Erro ao carregar divisão. Tente novamente.');
+    } finally {
+      setLoadingContinue(null);
     }
   };
 
-  // Deletar divisão
-  const handleDelete = async (divisaoId) => {
-    if (!confirm('Deseja realmente excluir esta divisão?')) return;
+  // Deletar divisão - abre modal de confirmação
+  const handleDeleteClick = (divisao) => {
+    setDeleteConfirmation({ id: divisao.id, nome: divisao.nome });
+  };
+
+  // Confirmar exclusão
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmation) return;
     
     try {
-      // Por enquanto, apenas remove da lista local
-      // TODO: Implementar endpoint de delete no backend
-      setHistorico(prev => prev.filter(d => d.id !== divisaoId));
+      await api.delete(`/api/divisao/${deleteConfirmation.id}`);
+      setHistorico(prev => prev.filter(d => d.id !== deleteConfirmation.id));
+      setDeleteConfirmation(null);
     } catch (err) {
       console.error('Erro ao deletar:', err);
+      alert('Erro ao excluir divisão. Tente novamente.');
     }
   };
 
@@ -556,8 +577,9 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                           )}
 
                           <button
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => handleDeleteClick(item)}
                             className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all text-sm"
+                            title="Excluir divisão"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -689,6 +711,15 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {deleteConfirmation && (
+        <ModalConfirmacao
+          mensagem={`Deseja realmente excluir "${deleteConfirmation.nome || 'esta divisão'}"? Esta ação não pode ser desfeita.`}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteConfirmation(null)}
+        />
       )}
     </div>
   );

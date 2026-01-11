@@ -1,17 +1,25 @@
 import { useState } from 'react';
-import { X, UserPlus } from 'lucide-react';
+import { X, UserPlus, LoaderCircle } from 'lucide-react';
 
 export default function ModalAdicionarPessoa({ onConfirm, onCancel }) {
   const [nome, setNome] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!nome.trim()) {
       setError('O nome não pode estar em branco.');
       return;
     }
-    onConfirm({ nome });
+    
+    setIsLoading(true);
+    try {
+      await onConfirm({ nome });
+    } catch (err) {
+      setError(err.message || 'Erro ao adicionar pessoa');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -34,7 +42,8 @@ export default function ModalAdicionarPessoa({ onConfirm, onCancel }) {
                 setNome(e.target.value);
                 setError('');
               }}
-              className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20"
+              disabled={isLoading}
+              className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 disabled:opacity-50"
               placeholder="Ex: João"
               autoFocus
             />
@@ -46,15 +55,25 @@ export default function ModalAdicionarPessoa({ onConfirm, onCancel }) {
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 bg-white/5 text-white font-semibold py-3 rounded-xl hover:bg-white/10 transition-all border border-white/20"
+              disabled={isLoading}
+              className="flex-1 bg-white/5 text-white font-semibold py-3 rounded-xl hover:bg-white/10 transition-all border border-white/20 disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold py-3 rounded-xl hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg hover:shadow-teal-500/50 flex items-center justify-center gap-2"
+              disabled={isLoading}
+              className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold py-3 rounded-xl hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg hover:shadow-teal-500/50 flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              <UserPlus size={18} /> Adicionar
+              {isLoading ? (
+                <>
+                  <LoaderCircle size={18} className="animate-spin" /> Adicionando...
+                </>
+              ) : (
+                <>
+                  <UserPlus size={18} /> Adicionar
+                </>
+              )}
             </button>
           </div>
         </form>

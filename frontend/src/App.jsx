@@ -40,7 +40,7 @@ function AppContent() {
       const response = await api.post('/api/criar-divisao', {
         itens: items,
         nomes_pessoas: nomes,
-        nome: nomeDivisao,  // Nome da divisão (opcional)
+        nome: nomeDivisao,
       });
       setDivisionData(response.data);
       setScreen('distribution');
@@ -58,11 +58,6 @@ function AppContent() {
 
   const handleDivisionUpdate = (updatedDivisionData) => {
     setDivisionData(updatedDivisionData);
-  };
-
-  const handleGoBackToDistribution = () => {
-    setFinalTotals(null);
-    setScreen('distribution');
   };
 
   const handleReset = () => {
@@ -158,8 +153,7 @@ function AppContent() {
         <SummaryScreen 
           totais={finalTotals} 
           divisionData={divisionData}
-          onReset={handleReset} 
-          onGoBack={handleGoBackToDistribution} 
+          onGoHome={handleReset}
         />
       </ScreenWithHeader>
     );

@@ -1,6 +1,18 @@
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, Check, X, LoaderCircle } from 'lucide-react';
 
 export default function ModalConfirmacao({ mensagem, onConfirm, onCancel }) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    setIsLoading(true);
+    try {
+      await onConfirm();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-md border border-amber-500/50 relative">
@@ -15,15 +27,25 @@ export default function ModalConfirmacao({ mensagem, onConfirm, onCancel }) {
         <div className="flex justify-center space-x-4 mt-4">
           <button 
             onClick={onCancel} 
-            className="px-6 py-2 rounded-xl text-gray-300 font-semibold bg-white/5 hover:bg-white/10 transition-colors flex items-center gap-2"
+            disabled={isLoading}
+            className="px-6 py-2 rounded-xl text-gray-300 font-semibold bg-white/5 hover:bg-white/10 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <X size={18} /> Cancelar
           </button>
           <button 
-            onClick={onConfirm} 
-            className="px-6 py-2 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center gap-2"
+            onClick={handleConfirm} 
+            disabled={isLoading}
+            className="px-6 py-2 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center gap-2 min-w-[120px] justify-center disabled:opacity-70"
           >
-            <Check size={18} /> Confirmar
+            {isLoading ? (
+              <>
+                <LoaderCircle size={18} className="animate-spin" /> Aguarde...
+              </>
+            ) : (
+              <>
+                <Check size={18} /> Confirmar
+              </>
+            )}
           </button>
         </div>
       </div>

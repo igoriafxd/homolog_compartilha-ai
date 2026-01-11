@@ -90,11 +90,11 @@ def db_divisao_to_response(divisao_db: dict) -> Divisao:
     pessoas = divisao_db.get("pessoas", [])
     
     return Divisao(
-        id=divisao_db["id"],
-        nome=divisao_db.get("nome", "Divisão sem nome"),  # Campo nome adicionado
+        id=str(divisao_db["id"]),
+        nome=divisao_db.get("nome", "Divisão sem nome"),
         itens=[
             Item(
-                id=item["id"],
+                id=str(item["id"]),
                 nome=item["nome"],
                 quantidade=float(item["quantidade"]),
                 valor_unitario=float(item["valor_unitario"]),
@@ -102,7 +102,7 @@ def db_divisao_to_response(divisao_db: dict) -> Divisao:
             ) for item in itens
         ],
         pessoas=[
-            Pessoa(id=p["id"], nome=p["nome"]) for p in pessoas
+            Pessoa(id=str(p["id"]), nome=p["nome"]) for p in pessoas
         ],
         status=divisao_db.get("status", "em_andamento"),
         taxa_servico_percentual=float(divisao_db.get("taxa_servico_percentual", 10.0)),
@@ -271,6 +271,32 @@ async def listar_divisoes_endpoint(current_user: dict = Depends(get_current_user
         if divisao_completa:
             result.append(db_divisao_to_response(divisao_completa))
     return result
+
+
+@app.delete("/api/divisao/{divisao_id}")
+async def deletar_divisao_endpoint(divisao_id: str, current_user: dict = Depends(get_current_user)):
+    """Deleta uma divisão e todos os seus dados relacionados."""
+    try:
+        user_id = get_user_id_or_error(current_user)
+        
+        # Verifica se a divisão existe e pertence ao usuário
+        divisao = db.get_divisao(divisao_id, user_id)
+        if not divisao:
+            raise HTTPException(status_code=404, detail="Divisão não encontrada.")
+        
+        # Deleta a divisão (CASCADE deleta itens, pessoas e atribuições)
+        success = db.delete_divisao(divisao_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Erro ao deletar divisão.")
+        
+        logger.info(f"Divisão '{divisao_id}' deletada pelo usuário '{user_id[:8]}...'")
+        return {"success": True, "message": "Divisão deletada com sucesso."}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao deletar divisão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================
@@ -500,6 +526,72 @@ async def calcular_totais_endpoint(divisao_id: str, current_user: dict = Depends
     )
     
     return TotaisResponse(pessoas=list(calculos_pessoas.values()), progresso=progresso)
+
+
+# ============================================
+# ATUALIZAR NOME DA DIVISÃO
+# ============================================
+
+class AtualizarNomeRequest(BaseModel):
+    nome: str
+
+
+@app.put("/api/divisao/{divisao_id}/nome", response_model=Divisao)
+async def atualizar_nome_divisao(divisao_id: str, request: AtualizarNomeRequest, current_user: dict = Depends(get_current_user)):
+    """Atualiza o nome de uma divisão."""
+    try:
+        user_id = get_user_id_or_error(current_user)
+        
+        # Verifica se a divisão existe e pertence ao usuário
+        divisao_db = db.get_divisao(divisao_id, user_id)
+        if not divisao_db:
+            raise HTTPException(status_code=404, detail="Divisão não encontrada")
+        
+        # Atualiza o nome
+        updated = db.update_divisao(divisao_id, {"nome": request.nome})
+        if not updated:
+            raise HTTPException(status_code=500, detail="Erro ao atualizar nome")
+        
+        # Retorna a divisão completa atualizada
+        divisao_completa = db.get_divisao_completa(divisao_id)
+        return db_divisao_to_response(divisao_completa)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao atualizar nome: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# FINALIZAR DIVISÃO
+# ============================================
+
+@app.put("/api/divisao/{divisao_id}/finalizar", response_model=Divisao)
+async def finalizar_divisao(divisao_id: str, current_user: dict = Depends(get_current_user)):
+    """Finaliza uma divisão, alterando o status para 'finalizada'."""
+    try:
+        user_id = get_user_id_or_error(current_user)
+        
+        # Verifica se a divisão existe e pertence ao usuário
+        divisao_db = db.get_divisao(divisao_id, user_id)
+        if not divisao_db:
+            raise HTTPException(status_code=404, detail="Divisão não encontrada")
+        
+        # Atualiza o status para finalizada
+        updated = db.update_divisao(divisao_id, {"status": "finalizada"})
+        if not updated:
+            raise HTTPException(status_code=500, detail="Erro ao finalizar divisão")
+        
+        # Retorna a divisão completa atualizada
+        divisao_completa = db.get_divisao_completa(divisao_id)
+        return db_divisao_to_response(divisao_completa)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao finalizar divisão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Execução do Servidor ---
