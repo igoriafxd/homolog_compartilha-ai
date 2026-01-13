@@ -2,6 +2,7 @@
 # Este arquivo contém todas as operações de banco de dados.
 # Ele abstrai o Supabase, facilitando manutenção e testes.
 # Cada função faz uma operação específica (criar, ler, atualizar, deletar).
+# OTIMIZADO: Reduzido N+1 queries usando batch e JOINs
 
 from typing import Optional
 from .supabase_client import get_supabase_admin
@@ -242,7 +243,7 @@ def get_atribuicoes_by_item(item_id: str) -> list:
 
 
 def get_atribuicoes_by_divisao(divisao_id: str) -> list:
-    """Lista todas as atribuições de uma divisão (via itens)."""
+    """Lista todas as atribuições de uma divisão (via itens) - OTIMIZADO com JOIN."""
     if not db:
         return []
     result = db.table("atribuicoes").select("*, itens!inner(divisao_id)").eq("itens.divisao_id", divisao_id).execute()
@@ -266,11 +267,14 @@ def delete_atribuicao(item_id: str, pessoa_id: str) -> bool:
 
 
 # ============================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES - OTIMIZADAS
 # ============================================
 
 def get_divisao_completa(divisao_id: str) -> Optional[dict]:
-    """Busca uma divisão com todos os dados relacionados."""
+    """
+    Busca uma divisão com todos os dados relacionados.
+    OTIMIZADO: Usa batch query para atribuições ao invés de N+1 queries.
+    """
     if not db:
         return None
     
@@ -281,12 +285,100 @@ def get_divisao_completa(divisao_id: str) -> Optional[dict]:
     itens = get_itens_by_divisao(divisao_id)
     pessoas = get_pessoas_by_divisao(divisao_id)
     
-    # Busca atribuições para cada item
+    # OTIMIZADO: Busca TODAS as atribuições da divisão em UMA query
+    todas_atribuicoes = get_atribuicoes_by_divisao(divisao_id)
+    
+    # Agrupa atribuições por item_id
+    atribuicoes_por_item = {}
+    for a in todas_atribuicoes:
+        item_id = a["item_id"]
+        if item_id not in atribuicoes_por_item:
+            atribuicoes_por_item[item_id] = []
+        atribuicoes_por_item[item_id].append(a)
+    
+    # Aplica atribuições aos itens
     for item in itens:
-        atribuicoes = get_atribuicoes_by_item(item["id"])
-        item["atribuido_a"] = {a["pessoa_id"]: a["quantidade"] for a in atribuicoes}
+        atribuicoes_do_item = atribuicoes_por_item.get(item["id"], [])
+        item["atribuido_a"] = {a["pessoa_id"]: a["quantidade"] for a in atribuicoes_do_item}
     
     divisao["itens"] = itens
     divisao["pessoas"] = pessoas
     
     return divisao
+
+
+def get_divisoes_completas_by_user(user_id: str) -> list:
+    """
+    Lista todas as divisões de um usuário com dados completos.
+    SUPER OTIMIZADO: Usa apenas 4 queries independente do número de divisões.
+    
+    Antes: 1 + (N divisões * (1 + 1 + M itens)) queries
+    Agora: 4 queries sempre (divisões, itens, pessoas, atribuições)
+    """
+    if not db:
+        return []
+    
+    # Query 1: Busca todas as divisões do usuário
+    divisoes = get_divisoes_by_user(user_id)
+    if not divisoes:
+        return []
+    
+    divisao_ids = [d["id"] for d in divisoes]
+    
+    # Query 2: Busca todos os itens de todas as divisões
+    itens_result = db.table("itens").select("*").in_("divisao_id", divisao_ids).order("ordem").execute()
+    todos_itens = itens_result.data if itens_result.data else []
+    
+    # Query 3: Busca todas as pessoas de todas as divisões
+    pessoas_result = db.table("pessoas").select("*").in_("divisao_id", divisao_ids).execute()
+    todas_pessoas = pessoas_result.data if pessoas_result.data else []
+    
+    # Query 4: Busca todas as atribuições via item_ids
+    item_ids = [i["id"] for i in todos_itens]
+    if item_ids:
+        atrib_result = db.table("atribuicoes").select("*").in_("item_id", item_ids).execute()
+        todas_atribuicoes = atrib_result.data if atrib_result.data else []
+    else:
+        todas_atribuicoes = []
+    
+    # Agrupa dados por divisao_id
+    itens_por_divisao = {}
+    for item in todos_itens:
+        div_id = item["divisao_id"]
+        if div_id not in itens_por_divisao:
+            itens_por_divisao[div_id] = []
+        itens_por_divisao[div_id].append(item)
+    
+    pessoas_por_divisao = {}
+    for pessoa in todas_pessoas:
+        div_id = pessoa["divisao_id"]
+        if div_id not in pessoas_por_divisao:
+            pessoas_por_divisao[div_id] = []
+        pessoas_por_divisao[div_id].append(pessoa)
+    
+    atribuicoes_por_item = {}
+    for a in todas_atribuicoes:
+        item_id = a["item_id"]
+        if item_id not in atribuicoes_por_item:
+            atribuicoes_por_item[item_id] = []
+        atribuicoes_por_item[item_id].append(a)
+    
+    # Monta as divisões completas
+    result = []
+    for divisao in divisoes:
+        div_id = divisao["id"]
+        
+        # Pega itens dessa divisão
+        itens_divisao = itens_por_divisao.get(div_id, [])
+        
+        # Aplica atribuições aos itens
+        for item in itens_divisao:
+            atribs = atribuicoes_por_item.get(item["id"], [])
+            item["atribuido_a"] = {a["pessoa_id"]: a["quantidade"] for a in atribs}
+        
+        divisao["itens"] = itens_divisao
+        divisao["pessoas"] = pessoas_por_divisao.get(div_id, [])
+        
+        result.append(divisao)
+    
+    return result

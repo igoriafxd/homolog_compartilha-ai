@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Mail, Lock, User, Phone, Eye, EyeOff, Sparkles, ArrowLeft, LoaderCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, Sparkles, ArrowLeft, LoaderCircle, X, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const GoogleIcon = () => (
@@ -10,6 +10,100 @@ const GoogleIcon = () => (
     <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571 c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
   </svg>
 );
+
+// Componente do Banner de Instalação PWA
+function InstallPWABanner() {
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    // Verifica se já está instalado como PWA
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+
+    if (isStandalone) {
+      return;
+    }
+
+    // Verifica se o usuário já dispensou o banner
+    const dismissed = localStorage.getItem('pwa-banner-dismissed');
+    if (dismissed) {
+      const dismissedDate = new Date(dismissed);
+      const now = new Date();
+      const daysSinceDismissed = (now - dismissedDate) / (1000 * 60 * 60 * 24);
+
+      if (daysSinceDismissed < 7) {
+        return;
+      }
+    }
+
+    // Captura o evento de instalação (Android/Chrome)
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const result = await installPrompt.userChoice;
+
+      if (result.outcome === 'accepted') {
+        setShowBanner(false);
+      }
+      setInstallPrompt(null);
+    }
+  };
+
+  const handleDismiss = () => {
+    setShowBanner(false);
+    localStorage.setItem('pwa-banner-dismissed', new Date().toISOString());
+  };
+
+  if (!showBanner) {
+    return null;
+  }
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-teal-600 to-cyan-600 text-white px-4 py-3 shadow-lg">
+      <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Download className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm">Instale o App</p>
+            <p className="text-xs text-teal-100">Acesso rápido</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={handleInstall}
+            className="bg-white text-teal-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-50 transition-colors"
+          >
+            Instalar
+          </button>
+          <button
+            onClick={handleDismiss}
+            className="text-white/80 hover:text-white p-1"
+            aria-label="Fechar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function LoginScreen() {
   const { signIn, signUp, resetPassword, signInWithGoogle } = useAuth();
@@ -170,264 +264,269 @@ export default function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-teal-900 to-cyan-900 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decorativo */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-20 left-20 w-72 h-72 bg-teal-500 rounded-full filter blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-cyan-500 rounded-full filter blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-      </div>
-
-      <div className="max-w-md w-full relative z-10">
-        {/* Logo e Título */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal-400" />
-            <h1 className="text-4xl sm:text-5xl font-bold text-white">
-              Compartilha <span className="text-teal-400">AI</span>
-            </h1>
-            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-cyan-400" />
-          </div>
-          <p className="text-gray-300 text-base sm:text-lg">
-            Simplifique a conta, aproveite o momento
-          </p>
+    <>
+      {/* Banner de Instalação PWA */}
+      <InstallPWABanner />
+      
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-teal-900 to-cyan-900 flex items-center justify-center p-4 pt-16 relative overflow-hidden">
+        {/* Background decorativo */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-20 left-20 w-72 h-72 bg-teal-500 rounded-full filter blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-20 right-20 w-96 h-96 bg-cyan-500 rounded-full filter blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
         </div>
 
-        {/* Card Principal */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-teal-400/30 shadow-2xl shadow-teal-500/20">
-          {/* Título do formulário */}
-          <div className="mb-6">
-            {mode !== 'login' && (
-              <button
-                onClick={() => switchMode('login')}
-                className="flex items-center gap-2 text-gray-300 hover:text-teal-400 transition-colors mb-4 text-sm"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Voltar
-              </button>
-            )}
-            <h2 className="text-2xl font-bold text-white">
-              {mode === 'login' && 'Entrar'}
-              {mode === 'register' && 'Criar Conta'}
-              {mode === 'forgot' && 'Recuperar Senha'}
-            </h2>
-            <p className="text-gray-400 text-sm mt-1">
-              {mode === 'login' && 'Acesse sua conta para continuar'}
-              {mode === 'register' && 'Preencha seus dados para começar'}
-              {mode === 'forgot' && 'Enviaremos um link para seu email'}
+        <div className="max-w-md w-full relative z-10">
+          {/* Logo e Título */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-teal-400" />
+              <h1 className="text-4xl sm:text-5xl font-bold text-white">
+                Compartilha <span className="text-teal-400">AI</span>
+              </h1>
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-cyan-400" />
+            </div>
+            <p className="text-gray-300 text-base sm:text-lg">
+              Simplifique a conta, aproveite o momento
             </p>
           </div>
 
-          {/* Mensagem de sucesso */}
-          {successMessage && (
-            <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-xl text-green-300 text-sm">
-              {successMessage}
-            </div>
-          )}
-
-          {/* Erro geral */}
-          {errors.general && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
-              {errors.general}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Nome - apenas no registro */}
-            {mode === 'register' && (
-              <div>
-                <label className="block text-white text-sm font-semibold mb-2">
-                  Nome Completo
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
-                    placeholder="Seu nome"
-                  />
-                </div>
-                {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
-              </div>
-            )}
-
-            {/* Email */}
-            <div>
-              <label className="block text-white text-sm font-semibold mb-2">
-                {mode === 'forgot' ? 'Email para recuperação' : 'Email'}
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
-                  placeholder="seu@email.com"
-                />
-              </div>
-              {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
-            </div>
-
-            {/* Telefone - apenas no registro */}
-            {mode === 'register' && (
-              <div>
-                <label className="block text-white text-sm font-semibold mb-2">
-                  Telefone
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handlePhoneChange}
-                    className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
-                    placeholder="85 9 0000-0000"
-                  />
-                </div>
-                {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
-              </div>
-            )}
-
-            {/* Senha */}
-            {mode !== 'forgot' && (
-              <div>
-                <label className="block text-white text-sm font-semibold mb-2">
-                  Senha
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-400 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-                {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
-              </div>
-            )}
-
-            {/* Confirmar Senha - apenas no registro */}
-            {mode === 'register' && (
-              <div>
-                <label className="block text-white text-sm font-semibold mb-2">
-                  Confirmar Senha
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-400 transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-                {errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword}</p>}
-              </div>
-            )}
-
-            {/* Esqueci a senha - apenas no login */}
-            {mode === 'login' && (
-              <div className="flex justify-end">
+          {/* Card Principal */}
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-teal-400/30 shadow-2xl shadow-teal-500/20">
+            {/* Título do formulário */}
+            <div className="mb-6">
+              {mode !== 'login' && (
                 <button
-                  type="button"
-                  onClick={() => switchMode('forgot')}
-                  className="text-teal-400 text-sm hover:text-teal-300 transition-colors"
-                >
-                  Esqueceu a senha?
-                </button>
-              </div>
-            )}
-
-            {/* Botão Submit */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold py-4 rounded-xl hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg hover:shadow-teal-500/50 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <LoaderCircle className="w-5 h-5 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                <>
-                  {mode === 'login' && 'Entrar'}
-                  {mode === 'register' && 'Criar Conta'}
-                  {mode === 'forgot' && 'Enviar Link'}
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Divisor OU - apenas login e registro */}
-          {mode !== 'forgot' && (
-            <>
-              <div className="flex items-center my-6">
-                <div className="flex-grow border-t border-white/20"></div>
-                <span className="flex-shrink mx-4 text-gray-400 text-sm font-semibold">OU</span>
-                <div className="flex-grow border-t border-white/20"></div>
-              </div>
-
-              {/* Login com Google */}
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={isLoading}
-                className="w-full bg-white/5 border-2 border-white/20 text-white font-semibold py-4 rounded-xl hover:bg-white/10 hover:border-white/40 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-              >
-                <GoogleIcon />
-                Continuar com Google
-              </button>
-            </>
-          )}
-
-          {/* Link para trocar entre login/registro */}
-          <div className="mt-6 text-center">
-            {mode === 'login' ? (
-              <p className="text-gray-400 text-sm">
-                Não tem uma conta?{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  className="text-teal-400 font-semibold hover:text-teal-300 transition-colors"
-                >
-                  Criar conta
-                </button>
-              </p>
-            ) : mode === 'register' ? (
-              <p className="text-gray-400 text-sm">
-                Já tem uma conta?{' '}
-                <button
-                  type="button"
                   onClick={() => switchMode('login')}
-                  className="text-teal-400 font-semibold hover:text-teal-300 transition-colors"
+                  className="flex items-center gap-2 text-gray-300 hover:text-teal-400 transition-colors mb-4 text-sm"
                 >
-                  Entrar
+                  <ArrowLeft className="w-4 h-4" />
+                  Voltar
                 </button>
+              )}
+              <h2 className="text-2xl font-bold text-white">
+                {mode === 'login' && 'Entrar'}
+                {mode === 'register' && 'Criar Conta'}
+                {mode === 'forgot' && 'Recuperar Senha'}
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">
+                {mode === 'login' && 'Acesse sua conta para continuar'}
+                {mode === 'register' && 'Preencha seus dados para começar'}
+                {mode === 'forgot' && 'Enviaremos um link para seu email'}
               </p>
-            ) : null}
+            </div>
+
+            {/* Mensagem de sucesso */}
+            {successMessage && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-xl text-green-300 text-sm">
+                {successMessage}
+              </div>
+            )}
+
+            {/* Erro geral */}
+            {errors.general && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
+                {errors.general}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Nome - apenas no registro */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-white text-sm font-semibold mb-2">
+                    Nome Completo
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
+                      placeholder="Seu nome"
+                    />
+                  </div>
+                  {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
+                </div>
+              )}
+
+              {/* Email */}
+              <div>
+                <label className="block text-white text-sm font-semibold mb-2">
+                  {mode === 'forgot' ? 'Email para recuperação' : 'Email'}
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
+                    placeholder="seu@email.com"
+                  />
+                </div>
+                {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+              </div>
+
+              {/* Telefone - apenas no registro */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-white text-sm font-semibold mb-2">
+                    Telefone
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handlePhoneChange}
+                      className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
+                      placeholder="85 9 0000-0000"
+                    />
+                  </div>
+                  {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
+                </div>
+              )}
+
+              {/* Senha */}
+              {mode !== 'forgot' && (
+                <div>
+                  <label className="block text-white text-sm font-semibold mb-2">
+                    Senha
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-400 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+                </div>
+              )}
+
+              {/* Confirmar Senha - apenas no registro */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-white text-sm font-semibold mb-2">
+                    Confirmar Senha
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder-gray-400 focus:outline-none focus:border-teal-400 focus:bg-white/10 transition-all"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-400 transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword}</p>}
+                </div>
+              )}
+
+              {/* Esqueci a senha - apenas no login */}
+              {mode === 'login' && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    className="text-teal-400 text-sm hover:text-teal-300 transition-colors"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+              )}
+
+              {/* Botão Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold py-4 rounded-xl hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg hover:shadow-teal-500/50 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <LoaderCircle className="w-5 h-5 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    {mode === 'login' && 'Entrar'}
+                    {mode === 'register' && 'Criar Conta'}
+                    {mode === 'forgot' && 'Enviar Link'}
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Divisor OU - apenas login e registro */}
+            {mode !== 'forgot' && (
+              <>
+                <div className="flex items-center my-6">
+                  <div className="flex-grow border-t border-white/20"></div>
+                  <span className="flex-shrink mx-4 text-gray-400 text-sm font-semibold">OU</span>
+                  <div className="flex-grow border-t border-white/20"></div>
+                </div>
+
+                {/* Login com Google */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoading}
+                  className="w-full bg-white/5 border-2 border-white/20 text-white font-semibold py-4 rounded-xl hover:bg-white/10 hover:border-white/40 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                >
+                  <GoogleIcon />
+                  Continuar com Google
+                </button>
+              </>
+            )}
+
+            {/* Link para trocar entre login/registro */}
+            <div className="mt-6 text-center">
+              {mode === 'login' ? (
+                <p className="text-gray-400 text-sm">
+                  Não tem uma conta?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchMode('register')}
+                    className="text-teal-400 font-semibold hover:text-teal-300 transition-colors"
+                  >
+                    Criar conta
+                  </button>
+                </p>
+              ) : mode === 'register' ? (
+                <p className="text-gray-400 text-sm">
+                  Já tem uma conta?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchMode('login')}
+                    className="text-teal-400 font-semibold hover:text-teal-300 transition-colors"
+                  >
+                    Entrar
+                  </button>
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

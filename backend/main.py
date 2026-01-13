@@ -262,16 +262,12 @@ async def buscar_divisao_endpoint(divisao_id: str, current_user: dict = Depends(
 
 @app.get("/api/divisoes", response_model=List[Divisao])
 async def listar_divisoes_endpoint(current_user: dict = Depends(get_current_user)):
-    """Lista todas as divisões do usuário."""
+    """Lista todas as divisões do usuário. OTIMIZADO: 4 queries ao invés de N+1."""
     user_id = get_user_id_or_error(current_user)
     
-    divisoes = db.get_divisoes_by_user(user_id)
-    result = []
-    for div in divisoes:
-        divisao_completa = db.get_divisao_completa(div["id"])
-        if divisao_completa:
-            result.append(db_divisao_to_response(divisao_completa))
-    return result
+    # OTIMIZADO: Uma única função que faz batch de queries
+    divisoes_completas = db.get_divisoes_completas_by_user(user_id)
+    return [db_divisao_to_response(div) for div in divisoes_completas]
 
 
 @app.delete("/api/divisao/{divisao_id}")
