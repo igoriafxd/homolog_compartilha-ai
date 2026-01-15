@@ -445,10 +445,19 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
 
           {/* User Menu */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold border-2 border-teal-400/50">
-              {getInitial(userName)}
-            </div>
-            
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={userName}
+                referrerPolicy="no-referrer"
+                className="w-10 h-10 rounded-full object-cover border-2 border-teal-400/50"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold border-2 border-teal-400/50">
+                {getInitial(userName)}
+              </div>
+            )}
+
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="p-2 rounded-lg hover:bg-white/10 transition-all text-white"
@@ -913,9 +922,18 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
             <div className="p-6 space-y-4">
               {/* Avatar */}
               <div className="flex justify-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-3xl border-4 border-teal-400/50">
-                  {getInitial(editNome || userName)}
-                </div>
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={userName}
+                    referrerPolicy="no-referrer"
+                    className="w-24 h-24 rounded-full object-cover border-4 border-teal-400/50"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white font-bold text-3xl border-4 border-teal-400/50">
+                    {getInitial(editNome || userName)}
+                  </div>
+                )}
               </div>
 
               {/* Nome */}
