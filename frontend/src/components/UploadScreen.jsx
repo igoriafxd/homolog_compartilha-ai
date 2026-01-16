@@ -1,9 +1,9 @@
 // UploadScreen V3 - Integrado com autenticação e histórico do Supabase
 import { useState, useEffect } from 'react';
-import { 
-  Upload, ArrowRight, LoaderCircle, Camera, Sparkles, 
-  Menu, X, User, History, LogOut, ChevronRight, ChevronDown, Clock, 
-  Search, Calendar, Users, Eye, Share2, PlayCircle, Trash2, Copy
+import {
+  Upload, ArrowRight, LoaderCircle, Camera, Sparkles,
+  Menu, X, User, History, LogOut, ChevronRight, ChevronDown, Clock,
+  Search, Calendar, Users, Eye, Share2, PlayCircle, Trash2, Copy, Plus, Image
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -155,12 +155,18 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
   
   // Delete confirmation state
   const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { id, nome }
+
+  // Logout confirmation state
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   
   // Duplicate state
   const [duplicatingId, setDuplicatingId] = useState(null);
   
   // Share modal state
   const [shareModal, setShareModal] = useState(null); // item para compartilhar
+
+  // Upload source modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // Carrega histórico quando abre o modal ou muda período
   useEffect(() => {
@@ -347,11 +353,14 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
   };
 
   // Logout handler
-  const handleLogout = async () => {
-    if (confirm('Deseja realmente sair?')) {
-      await signOut();
-    }
+  const handleLogout = () => {
     setMenuOpen(false);
+    setShowLogoutConfirmation(true);
+  };
+
+  const handleLogoutConfirm = async () => {
+    await signOut();
+    setShowLogoutConfirmation(false);
   };
 
   // Continuar divisão em andamento - busca dados completos
@@ -530,34 +539,63 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
           </div>
 
           {/* Card de Upload */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-teal-400/30 shadow-2xl shadow-teal-500/20 mb-6 hover:border-teal-400/50 transition-all">
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-teal-400/30 shadow-2xl shadow-teal-500/20 mb-4 hover:border-teal-400/50 transition-all">
             <h2 className="text-white font-bold text-xl mb-4 flex items-center gap-2">
               <Camera className="w-5 h-5 text-teal-400" />
               Escanear Comanda
             </h2>
             
-            <label
-              htmlFor="file-upload"
+            {/* Inputs hidden para câmera e galeria */}
+            <input
+              id="file-camera"
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+              accept="image/*"
+              capture="environment"
+            />
+            <input
+              id="file-gallery"
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+              accept="image/png, image/jpeg, image/webp"
+            />
+
+            <div
+              onClick={() => {
+                if (preview) return;
+                // Detecta se é mobile
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                if (isMobile) {
+                  setShowUploadModal(true);
+                } else {
+                  document.getElementById('file-gallery').click();
+                }
+              }}
               className="flex flex-col items-center justify-center border-2 border-dashed border-teal-400/60 rounded-2xl p-8 text-center hover:border-teal-400 hover:bg-teal-500/10 transition-all cursor-pointer group relative overflow-hidden active:scale-[0.98]"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-teal-500/0 to-cyan-500/0 group-hover:from-teal-500/10 group-hover:to-cyan-500/10 transition-all"></div>
-              <input 
-                id="file-upload" 
-                type="file" 
-                className="hidden" 
-                onChange={handleFileChange} 
-                accept="image/png, image/jpeg, image/webp" 
-              />
-              
+
               <div className="relative z-10 w-full">
                 {preview ? (
                   <div className="space-y-3">
-                    <img 
-                      src={preview} 
-                      alt="Pré-visualização" 
-                      className="object-contain h-40 w-full rounded-lg mx-auto shadow-lg" 
+                    <img
+                      src={preview}
+                      alt="Pré-visualização"
+                      className="object-contain h-40 w-full rounded-lg mx-auto shadow-lg"
                     />
                     <p className="text-teal-400 text-sm font-semibold">✓ Imagem carregada</p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFile(null);
+                        setPreview(null);
+                      }}
+                      className="text-gray-400 text-xs underline hover:text-white"
+                    >
+                      Trocar imagem
+                    </button>
                   </div>
                 ) : (
                   <>
@@ -577,7 +615,7 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
                   </>
                 )}
               </div>
-            </label>
+            </div>
 
             {error && (
               <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
@@ -605,7 +643,7 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
           </div>
 
           {/* Divisor */}
-          <div className="flex items-center my-6">
+          <div className="flex items-center my-4">
             <div className="flex-grow border-t border-white/20"></div>
             <span className="flex-shrink mx-4 text-gray-400 text-sm font-semibold">OU</span>
             <div className="flex-grow border-t border-white/20"></div>
@@ -614,10 +652,20 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
           {/* Botão Manual */}
           <button
             onClick={onManualStart}
-            className="w-full text-white font-semibold hover:text-teal-400 transition-all flex items-center justify-center gap-2 border-2 border-white/30 px-6 py-4 rounded-xl hover:border-teal-400 hover:bg-teal-400/10 group active:scale-[0.98]"
+            className="w-full bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 hover:border-teal-400/50 hover:bg-white/15 transition-all group active:scale-[0.98] flex items-center gap-4"
           >
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            Iniciar Divisão Manualmente
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+              <Plus className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-white font-bold text-base">Adicionar itens manualmente</p>
+              <p className="text-gray-400 text-sm">Insira conforme for pedindo</p>
+              <p className="text-teal-400 text-xs flex items-center gap-1 mt-1">
+                <Clock className="w-3 h-3" />
+                Acompanhe em tempo real
+              </p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-teal-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
           </button>
         </div>
       </div>
@@ -1008,6 +1056,15 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
         />
       )}
 
+      {/* Modal de Confirmação de Logout */}
+      {showLogoutConfirmation && (
+        <ModalConfirmacao
+          mensagem="Deseja realmente sair da sua conta?"
+          onConfirm={handleLogoutConfirm}
+          onCancel={() => setShowLogoutConfirmation(false)}
+        />
+      )}
+
       {/* Modal de Compartilhamento */}
       {shareModal && (
         <ShareModal
@@ -1016,6 +1073,71 @@ export default function UploadScreen({ onScanComplete, onManualStart, onContinue
           formatCurrency={formatCurrency}
           formatDate={formatDate}
         />
+      )}
+
+      {/* Modal de Seleção de Fonte (Câmera ou Galeria) - Apenas Mobile */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900/95 backdrop-blur-xl rounded-3xl border border-teal-400/30 shadow-2xl w-full max-w-sm">
+            {/* Header */}
+            <div className="p-5 border-b border-white/10 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Enviar foto da comanda</h3>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="p-2 rounded-lg hover:bg-white/10 transition-all text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Opções */}
+            <div className="p-5 space-y-3">
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  document.getElementById('file-camera').click();
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-400/30 hover:border-teal-400 hover:bg-teal-500/30 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                  <Camera className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-bold">Câmera</p>
+                  <p className="text-gray-400 text-sm">Tirar foto agora</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-teal-400 ml-auto" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  document.getElementById('file-gallery').click();
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/20 hover:border-teal-400/50 hover:bg-white/10 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <Image className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-bold">Galeria</p>
+                  <p className="text-gray-400 text-sm">Escolher imagem existente</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-teal-400 ml-auto" />
+              </button>
+            </div>
+
+            {/* Cancelar */}
+            <div className="p-5 pt-0">
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="w-full py-3 rounded-xl border border-white/20 text-gray-400 font-semibold hover:bg-white/5 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

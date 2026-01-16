@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import api from './services/api';
 import LoginScreen from './components/LoginScreen';
@@ -6,14 +6,27 @@ import UploadScreen from './components/UploadScreen';
 import PeopleScreen from './components/PeopleScreen';
 import DistributionScreen from './components/DistributionScreen';
 import SummaryScreen from './components/SummaryScreen';
+import ResetPasswordScreen from './components/ResetPasswordScreen';
 import { LogOut, Sparkles } from 'lucide-react';
 
 // Componente interno que usa o contexto de autenticação
 function AppContent() {
   const { user, profile, isAuthenticated, loading, signOut } = useAuth();
-  
+
   // --- ESTADOS GLOBAIS DA APLICAÇÃO ---
   const [screen, setScreen] = useState('upload');
+  const [isResetPasswordRoute, setIsResetPasswordRoute] = useState(false);
+
+  // Detecta se está na rota de reset de senha
+  useEffect(() => {
+    const checkRoute = () => {
+      setIsResetPasswordRoute(window.location.pathname === '/reset-password');
+    };
+
+    checkRoute();
+    window.addEventListener('popstate', checkRoute);
+    return () => window.removeEventListener('popstate', checkRoute);
+  }, []);
   const [items, setItems] = useState([]);
   const [divisionData, setDivisionData] = useState(null);
   const [finalTotals, setFinalTotals] = useState(null);
@@ -71,6 +84,11 @@ function AppContent() {
     await signOut();
     handleReset();
   };
+
+  // --- TELA DE RESET DE SENHA ---
+  if (isResetPasswordRoute) {
+    return <ResetPasswordScreen />;
+  }
 
   // --- LOADING STATE ---
   if (loading) {
